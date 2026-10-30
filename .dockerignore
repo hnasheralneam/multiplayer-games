@@ -1,0 +1,10 @@
+node_modules
+dist
+.npm-cache
+.git
+.chrome
+.chrome-debug
+shot-*.png
+assets/
+README.md
+*.log
