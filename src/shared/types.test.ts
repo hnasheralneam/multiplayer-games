@@ -88,6 +88,15 @@ describe('protocol', () => {
       )
     ).toMatchObject({ t: 'mahjong', action: 'match', a: 3, b: 140 });
     expect(
+      parseClientMessage(JSON.stringify({ t: 'mahjong', action: 'select', i: 12 }))
+    ).toMatchObject({ t: 'mahjong', action: 'select', i: 12 });
+    expect(
+      parseClientMessage(JSON.stringify({ t: 'mahjong', action: 'select', i: null }))
+    ).toMatchObject({ t: 'mahjong', action: 'select', i: null });
+    expect(
+      parseClientMessage(JSON.stringify({ t: 'mahjong', action: 'select', i: 144 }))
+    ).toBeNull();
+    expect(
       parseClientMessage(JSON.stringify({ t: 'mahjong', action: 'match', a: 999, b: 0 }))
     ).toBeNull();
     expect(

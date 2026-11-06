@@ -1,4 +1,8 @@
-import { useSyncExternalStore } from 'react';
+import {
+  useRef,
+  useSyncExternalStore,
+  type PointerEvent as ReactPointerEvent
+} from 'react';
 import type { Avatar } from '../../shared/types';
 
 export interface RemoteCursor {
@@ -87,6 +91,41 @@ function subscribe(listener: () => void): () => void {
 
 function getSnapshot(): RemoteCursor[] {
   return snapshot;
+}
+
+export interface CursorHandlers {
+  onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerLeave: () => void;
+}
+
+/**
+ * Normalize pointer positions against the element the handlers are attached to.
+ * That element must be the same one the presence layer covers, otherwise remote
+ * cursors drift by the layout around the board (padding, hints, centering).
+ */
+export function useCursorEmitter(
+  onCursor: ((x: number, y: number) => void) | undefined,
+  disabled = false
+): CursorHandlers {
+  const lastEmit = useRef(0);
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!onCursor || disabled || event.pointerType !== 'mouse') return;
+    const stamp = performance.now();
+    if (stamp - lastEmit.current < 45) return;
+    lastEmit.current = stamp;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    onCursor(x, y);
+  };
+
+  const onPointerLeave = () => {
+    if (!onCursor || disabled) return;
+    onCursor(-1, -1);
+  };
+
+  return { onPointerMove, onPointerLeave };
 }
 
 export function useRemoteCursors(): RemoteCursor[] {

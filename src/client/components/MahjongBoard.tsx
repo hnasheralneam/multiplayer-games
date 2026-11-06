@@ -12,7 +12,9 @@ import {
   type MahjongTilePos
 } from '../../shared/mahjong';
 import type { PublicMahjong } from '../../shared/types';
+import { useCursorEmitter } from '../lib/cursors';
 import { classNames } from '../lib/format';
+import { PresenceLayer } from './PresenceLayer';
 
 /** Vertical rise per layer, in cells (a tile is 2 cells tall). */
 const LIFT = 0.5;
@@ -21,8 +23,10 @@ interface Props {
   mahjong: PublicMahjong;
   selected: number | null;
   disabled?: boolean;
+  selectionsByTile?: Map<number, Array<{ id: string; color: string; name: string }>>;
   onSelect: (index: number | null) => void;
   onMatch: (a: number, b: number) => void;
+  onCursor?: (x: number, y: number) => void;
 }
 
 function TileFace({ type }: { type: number }) {
@@ -76,10 +80,13 @@ export function MahjongBoard({
   mahjong,
   selected,
   disabled = false,
+  selectionsByTile,
   onSelect,
-  onMatch
+  onMatch,
+  onCursor
 }: Props) {
   const layout = MAHJONG_LAYOUTS[mahjong.layout];
+  const cursorHandlers = useCursorEmitter(onCursor, disabled);
   const cols = mahjongTileCols(mahjong.layout);
   const rows = mahjongTileRows(mahjong.layout);
   const maxLayer = mahjongTileLayers(mahjong.layout) - 1;
@@ -140,12 +147,23 @@ export function MahjongBoard({
   } as CSSProperties;
 
   return (
-    <div className="mahjong-board" style={boardStyle} aria-label="Mahjongg board">
+    <div
+      className="mahjong-board"
+      style={boardStyle}
+      aria-label="Mahjongg board"
+      onPointerMove={cursorHandlers.onPointerMove}
+      onPointerLeave={cursorHandlers.onPointerLeave}
+    >
       {mahjong.tiles.map((type, index) => {
         if (type < 0) return null;
         const pos = layout.positions[index];
         const free = freeSet.has(index);
         const isSelected = selected === index;
+        const remoteSelectors = selectionsByTile?.get(index) ?? [];
+        const remoteLabel =
+          remoteSelectors.length > 0
+            ? `, selected by ${remoteSelectors.map((selector) => selector.name).join(', ')}`
+            : '';
         return (
           <button
             key={index}
@@ -157,16 +175,29 @@ export function MahjongBoard({
               shakeIndex === index && 'mj-tile-shake'
             )}
             style={tileStyle(pos)}
+            data-index={index}
             onClick={() => clickTile(index)}
             disabled={disabled}
             aria-disabled={!free}
-            aria-label={`${tileLabel(type)}${free ? '' : ', covered'}`}
+            aria-label={`${tileLabel(type)}${free ? '' : ', covered'}${remoteLabel}`}
             aria-pressed={isSelected}
           >
             <TileFace type={type} />
+            {remoteSelectors.length > 0 && (
+              <span className="mj-tile-remote-outlines" aria-hidden="true">
+                {remoteSelectors.map((selector, ring) => (
+                  <span
+                    key={selector.id}
+                    className="mj-tile-remote-outline"
+                    style={{ borderColor: selector.color, inset: `${-2 - ring * 2}px` }}
+                  />
+                ))}
+              </span>
+            )}
           </button>
         );
       })}
+      {onCursor && <PresenceLayer />}
     </div>
   );
 }

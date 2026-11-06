@@ -14,6 +14,8 @@ export interface MahjongGameProps {
   serverOffset: number;
   onMatch: (a: number, b: number) => void;
   onShuffle: () => void;
+  onSelect: (i: number | null) => void;
+  onCursor: (x: number, y: number) => void;
   onEndGame?: () => void;
 }
 
@@ -24,6 +26,8 @@ export function MahjongGame({
   serverOffset,
   onMatch,
   onShuffle,
+  onSelect,
+  onCursor,
   onEndGame
 }: MahjongGameProps) {
   const mahjong = room.mahjong;
@@ -54,6 +58,25 @@ export function MahjongGame({
   const elapsed = Math.max(0, endedAt - mahjong.startedAt);
   const final = room.status === 'results' && room.lastResult?.game === 'mahjong';
   const stuck = !final && left > 0 && !hasFreeMatch(mahjong.layout, mahjong.tiles);
+
+  // Keep the local pick snappy but record it on the shared table so everyone
+  // sees which tile each player is considering.
+  const choose = (index: number | null) => {
+    setSelected(index);
+    onSelect(index);
+  };
+
+  const playersById = new Map(room.players.map((player) => [player.id, player]));
+  const selectionsByTile = new Map<number, Array<{ id: string; color: string; name: string }>>();
+  for (const selection of mahjong.selections) {
+    if (selection.by === you.id) continue;
+    if (mahjong.tiles[selection.i] < 0) continue;
+    const player = playersById.get(selection.by);
+    if (!player) continue;
+    const list = selectionsByTile.get(selection.i) ?? [];
+    list.push({ id: player.id, color: player.color, name: player.name });
+    selectionsByTile.set(selection.i, list);
+  }
 
   return (
     <section className={`mahjong-game ${final ? 'mahjong-game-final' : ''}`} aria-label={meta.label}>
@@ -94,8 +117,10 @@ export function MahjongGame({
             mahjong={mahjong}
             selected={selected}
             disabled={!canPlay}
-            onSelect={setSelected}
+            selectionsByTile={selectionsByTile}
+            onSelect={choose}
             onMatch={onMatch}
+            onCursor={onCursor}
           />
 
           {stuck && (
@@ -127,8 +152,9 @@ export function MahjongGame({
           <span className="mahjong-side-kicker">How to match</span>
           <p className="mahjong-help">
             Find two matching tiles that each have an open left or right edge and nothing
-            resting on top, then tap both. Nothing is marked for you — reading the edges of
-            the stack is the game. Buried tiles just shake when you try them.
+            resting on top, then tap both. Nothing marks which tiles are free — reading the
+            edges of the stack is the game. Your pick gets a ring; a tablemate's pick is
+            outlined in their color. Buried tiles just shake when you try them.
           </p>
           <div className="mahjong-side-stats">
             <div>

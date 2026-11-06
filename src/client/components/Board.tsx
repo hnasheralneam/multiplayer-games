@@ -7,10 +7,11 @@ import {
   type PointerEvent as ReactPointerEvent
 } from 'react';
 import type { PublicPlayer } from '../../shared/types';
-import { useRemoteCursors } from '../lib/cursors';
+import { useCursorEmitter } from '../lib/cursors';
 import { haptic } from '../lib/copy';
 import { classNames } from '../lib/format';
 import { IconFlag, IconMine } from './icons';
+import { PresenceLayer } from './PresenceLayer';
 
 export interface BoardProps {
   width: number;
@@ -24,6 +25,7 @@ export interface BoardProps {
   onReveal: (i: number) => void;
   onFlag: (i: number) => void;
   onChord: (i: number) => void;
+  onCursor?: (x: number, y: number) => void;
   recent: Map<number, string>;
   stale: number | null;
   mines?: Set<number> | null;
@@ -173,34 +175,6 @@ const Cell = memo(function Cell({
   );
 });
 
-function PresenceLayer() {
-  const cursors = useRemoteCursors();
-  return (
-    <div className="presence-layer" aria-hidden="true">
-      {cursors.map((cursor) => (
-        <div
-          className="remote-cursor"
-          key={cursor.id}
-          style={
-            {
-              left: `${cursor.x * 100}%`,
-              top: `${cursor.y * 100}%`,
-              '--c': cursor.color
-            } as CSSProperties
-          }
-        >
-          <svg viewBox="0 0 16 16" className="remote-cursor-arrow">
-            <path d="M2 1.5 13.5 8 8.3 9.4 6.1 14.5 2 1.5Z" fill="currentColor" />
-          </svg>
-          <span className="remote-cursor-label">
-            {cursor.avatar} {cursor.name}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export const Board = memo(function Board({
   width,
   height,
@@ -213,6 +187,7 @@ export const Board = memo(function Board({
   onReveal,
   onFlag,
   onChord,
+  onCursor,
   recent,
   stale,
   mines,
@@ -222,6 +197,7 @@ export const Board = memo(function Board({
   const [focusIndex, setFocusIndex] = useState(0);
   const boardRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const cursorHandlers = useCursorEmitter(onCursor, disabled);
 
   const moveFocus = (next: number) => {
     const clamped = Math.max(0, Math.min(width * height - 1, next));
@@ -283,6 +259,8 @@ export const Board = memo(function Board({
         aria-rowcount={height}
         aria-colcount={width}
         onKeyDown={onKeyDown}
+        onPointerMove={cursorHandlers.onPointerMove}
+        onPointerLeave={cursorHandlers.onPointerLeave}
       >
         {Array.from({ length: height }, (_, row) => (
           <div className="board-row" role="row" key={row}>

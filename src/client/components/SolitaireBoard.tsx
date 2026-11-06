@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   RANK_LABELS,
@@ -12,9 +12,11 @@ import {
   type SolitaireSlot
 } from '../../shared/types';
 import { canPlace, locateCard, movingCards } from '../../shared/solitaire';
+import { useCursorEmitter } from '../lib/cursors';
 import { classNames } from '../lib/format';
 import { solitaireView } from '../lib/solitaireView';
 import { IconRefresh } from './icons';
+import { PresenceLayer } from './PresenceLayer';
 
 interface Props {
   solitaire: PublicSolitaire;
@@ -25,14 +27,18 @@ interface Props {
   onDraw: () => void;
   onRecycle: () => void;
   onAuto: (card: number) => void;
+  onCursor?: (x: number, y: number) => void;
 }
 
 type DropSource = SolitaireSlot | 'waste';
+type CardLocation = NonNullable<ReturnType<typeof locateCard>>;
 
 interface DragInfo {
   pointerId: number;
   card: number;
   cards: number[];
+  roundId: string;
+  origin: CardLocation;
   cardWidth: number;
   step: number;
   grabX: number;
@@ -55,9 +61,14 @@ interface DragView {
 
 interface DragEvents {
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+}
+
+function sameLocation(a: CardLocation, b: CardLocation): boolean {
+  return a.zone === b.zone && a.index === b.index && a.position === b.position;
+}
+
+function sameCards(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((card, index) => card === b[index]);
 }
 
 function findCard(solitaire: PublicSolitaire, card: number): DropSource | null {
@@ -254,13 +265,16 @@ export function SolitaireBoard({
   onMove,
   onDraw,
   onRecycle,
-  onAuto
+  onAuto,
+  onCursor
 }: Props) {
   const view = useMemo(() => solitaireView(solitaire), [solitaire]);
+  const cursorHandlers = useCursorEmitter(onCursor, disabled);
   const selectedSlot = selected === null ? null : findCard(solitaire, selected);
   const dragRef = useRef<DragInfo | null>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const suppressClickRef = useRef(false);
+  const suppressClickTimer = useRef<number | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const rectsRef = useRef<Map<number, { el: HTMLElement; rect: DOMRect }>>(new Map());
   const prevStateRef = useRef<PublicSolitaire | null>(null);
@@ -268,17 +282,155 @@ export function SolitaireBoard({
   const [drag, setDrag] = useState<DragView | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
 
-  const endDrag = () => {
+  // Drag handlers live on window, not on the card button: another player's
+  // move can unmount the button under the pointer mid-drag, which used to
+  // swallow pointerup/pointercancel and leave the ghost stuck "in hand".
+  const latestRef = useRef({ onSelect, onMove });
+  latestRef.current = { onSelect, onMove };
+  const viewRef = useRef(view);
+  viewRef.current = view;
+
+  const endDrag = useCallback(() => {
     dragRef.current = null;
     setDrag(null);
     setHoverKey(null);
-  };
+  }, []);
 
-  // Someone else may move or sweep the dragged cards mid-drag; bail out then.
+  // Abort a drag the moment its source is no longer the same run: someone
+  // else moved/covered/swept it, the table ended, or the pointer's snapshot
+  // went stale. The card must never keep following a hand it no longer owns.
   useEffect(() => {
-    if (!drag) return;
-    if (findCard(solitaire, drag.card) === null) endDrag();
-  }, [solitaire, drag]);
+    const info = dragRef.current;
+    if (!info) return;
+    if (disabled || info.roundId !== solitaire.id) {
+      endDrag();
+      return;
+    }
+    const location = locateCard(view, info.card);
+    if (!location || !sameLocation(location, info.origin)) {
+      endDrag();
+      return;
+    }
+    if (!sameCards(movingCards(view, location), info.cards)) endDrag();
+  }, [view, solitaire.id, disabled, endDrag]);
+
+  // A selection is only meaningful while that card still starts a legal run
+  // (or is a top card). Clear it when another player covers it or the round
+  // stops accepting moves, so pressing a destination never fires a dead move.
+  useEffect(() => {
+    if (selected === null) return;
+    if (disabled) {
+      latestRef.current.onSelect(null);
+      return;
+    }
+    const location = locateCard(view, selected);
+    const cards = location ? movingCards(view, location) : [];
+    if (cards.length === 0 || cards[0] !== selected) latestRef.current.onSelect(null);
+  }, [view, selected, disabled]);
+
+  // New deal: nothing from the previous table may stay picked up.
+  useEffect(() => {
+    endDrag();
+    latestRef.current.onSelect(null);
+  }, [solitaire.id, endDrag]);
+
+  const handleWindowPointerMove = useCallback((event: PointerEvent) => {
+    const info = dragRef.current;
+    if (!info || event.pointerId !== info.pointerId) return;
+    if (!info.active) {
+      if (Math.hypot(event.clientX - info.startX, event.clientY - info.startY) < DRAG_THRESHOLD_PX) {
+        return;
+      }
+      info.active = true;
+      latestRef.current.onSelect(null);
+      setDrag({
+        card: info.card,
+        cards: info.cards,
+        x: event.clientX - info.grabX,
+        y: event.clientY - info.grabY,
+        grabX: info.grabX,
+        grabY: info.grabY,
+        step: info.step,
+        cardWidth: info.cardWidth
+      });
+    }
+    if (ghostRef.current) {
+      ghostRef.current.style.transform = `translate3d(${event.clientX - info.grabX}px, ${
+        event.clientY - info.grabY
+      }px, 0)`;
+    }
+    const target = dropTargetAt(event.clientX, event.clientY);
+    const valid = target !== null && canPlace(viewRef.current, info.cards, target);
+    const next = valid ? `${target.zone}:${target.index}` : null;
+    setHoverKey((prev) => (prev === next ? prev : next));
+  }, []);
+
+  const handleWindowPointerUp = useCallback((event: PointerEvent) => {
+    const info = dragRef.current;
+    if (!info || event.pointerId !== info.pointerId) return;
+    const wasActive = info.active;
+    const card = info.card;
+    dragRef.current = null;
+    if (!wasActive) return;
+    setDrag(null);
+    setHoverKey(null);
+    suppressClickRef.current = true;
+    if (suppressClickTimer.current) clearTimeout(suppressClickTimer.current);
+    suppressClickTimer.current = window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+    const target = dropTargetAt(event.clientX, event.clientY);
+    if (!target) return;
+    const currentView = viewRef.current;
+    const location = locateCard(currentView, card);
+    if (!location || !sameLocation(location, info.origin)) return;
+    const cards = movingCards(currentView, location);
+    if (!sameCards(cards, info.cards)) return;
+    if (!canPlace(currentView, cards, target)) return;
+    dragMoveRef.current = { cards, at: Date.now() };
+    latestRef.current.onMove(card, target);
+  }, []);
+
+  const handleWindowPointerCancel = useCallback((event: PointerEvent) => {
+    const info = dragRef.current;
+    if (!info || event.pointerId !== info.pointerId) return;
+    dragRef.current = null;
+    if (info.active) {
+      setDrag(null);
+      setHoverKey(null);
+    }
+  }, []);
+
+  const handleWindowBlur = useCallback(() => {
+    if (dragRef.current) endDrag();
+  }, [endDrag]);
+
+  const handleVisibilityChange = useCallback(() => {
+    if (document.visibilityState === 'hidden' && dragRef.current) endDrag();
+  }, [endDrag]);
+
+  useEffect(() => {
+    window.addEventListener('pointermove', handleWindowPointerMove, true);
+    window.addEventListener('pointerup', handleWindowPointerUp, true);
+    window.addEventListener('pointercancel', handleWindowPointerCancel, true);
+    window.addEventListener('blur', handleWindowBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove, true);
+      window.removeEventListener('pointerup', handleWindowPointerUp, true);
+      window.removeEventListener('pointercancel', handleWindowPointerCancel, true);
+      window.removeEventListener('blur', handleWindowBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      dragRef.current = null;
+      if (suppressClickTimer.current) clearTimeout(suppressClickTimer.current);
+    };
+  }, [
+    handleWindowPointerMove,
+    handleWindowPointerUp,
+    handleWindowPointerCancel,
+    handleWindowBlur,
+    handleVisibilityChange
+  ]);
 
   // Flight pass: after each commit, diff card locations against the previous
   // state and fly whatever moved (safe autoplay, double-tap, click-moves) from
@@ -295,12 +447,12 @@ export function SolitaireBoard({
     }
     const prev = prevStateRef.current;
     if (prev && prev !== solitaire && prev.id === solitaire.id) {
-      const drag = dragMoveRef.current;
-      const skip = drag && Date.now() - drag.at < 600 ? new Set(drag.cards) : null;
+      const justDropped = dragMoveRef.current;
+      const skip = justDropped && Date.now() - justDropped.at < 600 ? new Set(justDropped.cards) : null;
       const prevLoc = locationMap(prev);
       const nextLoc = locationMap(solitaire);
       for (const [card, entry] of rects) {
-        if (skip?.has(card)) continue;
+        if (skip?.has(card) || drag?.cards.includes(card)) continue;
         const from = rectsRef.current.get(card);
         if (!from) continue;
         if (prevLoc.get(card) !== nextLoc.get(card)) {
@@ -372,7 +524,9 @@ export function SolitaireBoard({
     dragRef.current = {
       pointerId: event.pointerId,
       card,
-      cards,
+      cards: [...cards],
+      roundId: solitaire.id,
+      origin: { ...location },
       cardWidth: rect.width,
       step: 0,
       grabX: event.clientX - rect.left,
@@ -392,74 +546,10 @@ export function SolitaireBoard({
     }
   };
 
-  const cardPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const info = dragRef.current;
-    if (!info || event.pointerId !== info.pointerId) return;
-    if (!info.active) {
-      if (Math.hypot(event.clientX - info.startX, event.clientY - info.startY) < DRAG_THRESHOLD_PX) {
-        return;
-      }
-      info.active = true;
-      onSelect(null);
-      setDrag({
-        card: info.card,
-        cards: info.cards,
-        x: event.clientX - info.grabX,
-        y: event.clientY - info.grabY,
-        grabX: info.grabX,
-        grabY: info.grabY,
-        step: info.step,
-        cardWidth: info.cardWidth
-      });
-    }
-    if (ghostRef.current) {
-      ghostRef.current.style.transform = `translate3d(${event.clientX - info.grabX}px, ${
-        event.clientY - info.grabY
-      }px, 0)`;
-    }
-    const target = dropTargetAt(event.clientX, event.clientY);
-    const valid = target !== null && canPlace(view, info.cards, target);
-    const next = valid ? `${target.zone}:${target.index}` : null;
-    setHoverKey((prev) => (prev === next ? prev : next));
-  };
-
-  const cardPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const info = dragRef.current;
-    if (!info || event.pointerId !== info.pointerId) return;
-    const wasActive = info.active;
-    const card = info.card;
-    dragRef.current = null;
-    if (!wasActive) return;
-    setDrag(null);
-    setHoverKey(null);
-    suppressClickRef.current = true;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
-    const target = dropTargetAt(event.clientX, event.clientY);
-    if (!target) return;
-    const location = locateCard(view, card);
-    const cards = location ? movingCards(view, location) : [];
-    if (cards.length === 0 || cards[0] !== card) return;
-    if (!canPlace(view, cards, target)) return;
-    dragMoveRef.current = { cards, at: Date.now() };
-    onMove(card, target);
-  };
-
-  const cardPointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const info = dragRef.current;
-    if (!info || event.pointerId !== info.pointerId) return;
-    if (info.active) endDrag();
-    else dragRef.current = null;
-  };
-
   const dragEventsFor = (card: number, slot: DropSource): DragEvents | undefined => {
     if (disabled) return undefined;
     return {
-      onPointerDown: (event) => cardPointerDown(card, slot, event),
-      onPointerMove: cardPointerMove,
-      onPointerUp: cardPointerUp,
-      onPointerCancel: cardPointerCancel
+      onPointerDown: (event) => cardPointerDown(card, slot, event)
     };
   };
 
@@ -467,7 +557,12 @@ export function SolitaireBoard({
   const visibleWaste = solitaire.waste.slice(-3);
 
   return (
-    <div ref={boardRef} className={`solitaire-board solitaire-board-${solitaire.variant}`}>
+    <div
+      ref={boardRef}
+      className={`solitaire-board solitaire-board-${solitaire.variant}`}
+      onPointerMove={cursorHandlers.onPointerMove}
+      onPointerLeave={cursorHandlers.onPointerLeave}
+    >
       <div className="solitaire-top">
         <div className="solitaire-pile-line">
           {solitaire.variant === 'klondike' ? (
@@ -683,6 +778,8 @@ export function SolitaireBoard({
           );
         })}
       </div>
+
+      {onCursor && <PresenceLayer />}
 
       {drag &&
         createPortal(

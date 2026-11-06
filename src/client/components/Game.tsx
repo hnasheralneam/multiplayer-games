@@ -4,8 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
-  type PointerEvent
+  type CSSProperties
 } from 'react';
 import type { PublicRoom, You } from '../../shared/types';
 import { Board } from './Board';
@@ -45,7 +44,6 @@ export function Game({
   const now = useNow(200);
   const serverNow = now + serverOffset;
   const [mode, setMode] = useState<'reveal' | 'flag'>('reveal');
-  const lastCursor = useRef(0);
   const stageRef = useRef<HTMLDivElement>(null);
   const [boardSize, setBoardSize] = useState(0);
 
@@ -127,17 +125,6 @@ export function Game({
   const resumeIn = resuming && room.resumeAt ? Math.max(0, Math.ceil((room.resumeAt - serverNow) / 1000)) : 0;
   const firstClick = room.status === 'playing' && revealed.size === 0;
 
-  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (!canPlay || event.pointerType !== 'mouse') return;
-    const stamp = performance.now();
-    if (stamp - lastCursor.current < 45) return;
-    lastCursor.current = stamp;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    onCursor(x, y);
-  };
-
   return (
     <section className={`game ${isWide ? 'game-big' : ''}`} aria-label="Game">
       <GameHud
@@ -174,10 +161,6 @@ export function Game({
         className={`board-stage ${final ? 'board-stage-final' : ''}`}
         ref={stageRef}
         style={{ '--board-size': boardSize ? `${boardSize}px` : undefined } as CSSProperties}
-        onPointerMove={handlePointerMove}
-        onPointerLeave={() => {
-          if (canPlay) onCursor(-1, -1);
-        }}
       >
         <div className="board-holder">
           {firstClick && (
@@ -199,6 +182,7 @@ export function Game({
             onReveal={onReveal}
             onFlag={onFlag}
             onChord={onChord}
+            onCursor={onCursor}
             recent={recentMap}
             stale={stale?.i ?? null}
             mines={final ? mines : null}

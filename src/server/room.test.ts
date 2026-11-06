@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws';
 import type { ServerMessage } from '../shared/types';
 import type { Client } from './client';
 import type { RoomSettings } from '../shared/types';
+import { freeTileIndices, tilesMatch } from '../shared/mahjong';
 import { Room, defaultSettings, hashToken } from './room';
 
 interface TestClient extends Client {
@@ -318,6 +319,76 @@ describe('room flow', () => {
     vi.advanceTimersByTime(12_000);
     expect(room.status).toBe('lobby');
     expect(room.solitaire).toBeNull();
+  });
+
+  it('shares Mahjong picks and clears them when the tiles are matched', () => {
+    const room = makeRoom({ game: 'mahjong', mahjongLayout: 'cozy' });
+    const host = testClient();
+    const guest = testClient();
+    room.handleJoin(host, {
+      t: 'join',
+      code: 'K7QP',
+      name: 'Maya',
+      avatar: '🦊',
+      token: 'host-token'
+    });
+    room.handleJoin(guest, { t: 'join', code: 'K7QP', name: 'Sam', avatar: '🐈' });
+    room.handleMessage(host, { t: 'start' });
+    vi.advanceTimersByTime(3_000);
+
+    const mahjong = room.mahjong!;
+    const free = freeTileIndices(mahjong.state.layout, mahjong.state.tiles);
+    const hostId = room.hostId!;
+    const guestId = [...room.players.keys()].find((id) => id !== hostId)!;
+
+    room.handleMessage(host, { t: 'mahjong', action: 'select', i: free[0] });
+    expect(room.toPublic().mahjong?.selections).toEqual([{ by: hostId, i: free[0] }]);
+
+    let pair: [number, number] | null = null;
+    for (let a = 0; a < free.length && !pair; a += 1) {
+      for (let b = a + 1; b < free.length; b += 1) {
+        if (tilesMatch(mahjong.state.tiles[free[a]], mahjong.state.tiles[free[b]])) {
+          pair = [free[a], free[b]];
+          break;
+        }
+      }
+    }
+    expect(pair).toBeTruthy();
+    const [a, b] = pair!;
+    vi.advanceTimersByTime(40);
+    room.handleMessage(host, { t: 'mahjong', action: 'select', i: a });
+    room.handleMessage(guest, { t: 'mahjong', action: 'select', i: b });
+    expect(room.toPublic().mahjong?.selections).toHaveLength(2);
+
+    room.handleMessage(host, { t: 'mahjong', action: 'match', a, b });
+    expect(room.mahjong?.state.tiles[a]).toBe(-1);
+    expect(room.toPublic().mahjong?.selections).toEqual([]);
+    expect(guestId).toBeTruthy();
+  });
+
+  it('clears a Mahjong pick when the player disconnects', () => {
+    const room = makeRoom({ game: 'mahjong', mahjongLayout: 'cozy' });
+    const host = testClient();
+    const guest = testClient();
+    room.handleJoin(host, {
+      t: 'join',
+      code: 'K7QP',
+      name: 'Maya',
+      avatar: '🦊',
+      token: 'host-token'
+    });
+    room.handleJoin(guest, { t: 'join', code: 'K7QP', name: 'Sam', avatar: '🐈' });
+    room.handleMessage(host, { t: 'start' });
+    vi.advanceTimersByTime(3_000);
+
+    const mahjong = room.mahjong!;
+    const free = freeTileIndices(mahjong.state.layout, mahjong.state.tiles);
+    const guestId = [...room.players.keys()].find((id) => id !== room.hostId)!;
+    room.handleMessage(guest, { t: 'mahjong', action: 'select', i: free[0] });
+    expect(room.toPublic().mahjong?.selections).toContainEqual({ by: guestId, i: free[0] });
+
+    room.disconnect(guest);
+    expect(room.toPublic().mahjong?.selections).toEqual([]);
   });
 
   it('moves host after the host disappears for a minute', () => {

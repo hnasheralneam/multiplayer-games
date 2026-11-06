@@ -339,6 +339,11 @@ export interface SolitaireResult {
   stats: SolitairePlayerStats[];
 }
 
+export interface PublicMahjongSelection {
+  i: number;
+  by: string;
+}
+
 export interface PublicMahjong {
   id: string;
   startedAt: number;
@@ -348,6 +353,8 @@ export interface PublicMahjong {
   tiles: number[];
   moves: number;
   shuffles: number;
+  /** Tiles each player currently has picked, shown as colored outlines. */
+  selections: PublicMahjongSelection[];
 }
 
 export interface MahjongPlayerStats {
@@ -490,10 +497,12 @@ export interface SolitaireMessage {
 
 export interface MahjongMessage {
   t: 'mahjong';
-  action: 'match' | 'shuffle';
+  action: 'match' | 'shuffle' | 'select';
   /** Position indexes into the layout's tile list. */
   a?: number;
   b?: number;
+  /** Selected tile position; null clears this player's selection. */
+  i?: number | null;
 }
 
 export interface ReturnLobbyMessage {

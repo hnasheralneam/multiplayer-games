@@ -47,9 +47,10 @@ const schema = z.discriminatedUnion('t', [
   }),
   z.object({
     t: z.literal('mahjong'),
-    action: z.enum(['match', 'shuffle']),
+    action: z.enum(['match', 'shuffle', 'select']),
     a: z.number().int().min(0).max(143).optional(),
-    b: z.number().int().min(0).max(143).optional()
+    b: z.number().int().min(0).max(143).optional(),
+    i: z.number().int().min(0).max(143).nullable().optional()
   }),
   z.object({ t: z.literal('lobby') }),
   z.object({

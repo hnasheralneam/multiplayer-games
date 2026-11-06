@@ -40,7 +40,7 @@ import {
   type You
 } from '../shared/types';
 import { randomName } from '../shared/names';
-import { isMahjongLayout } from '../shared/mahjong';
+import { isMahjongLayout, isTileFree } from '../shared/mahjong';
 import {
   neighbors,
   placeMines,
@@ -74,6 +74,7 @@ const COUNTDOWN_MS = 3_000;
 const RESUME_MS = 2_000;
 const ACTION_COOLDOWN_MS = 55;
 const CURSOR_COOLDOWN_MS = 25;
+const SELECT_COOLDOWN_MS = 35;
 const ROOM_TTL_MS = 24 * 60 * 60_000;
 const RESULTS_RETURN_MS = 12_000;
 const SUDOKU_ACTION_COOLDOWN_MS = 35;
@@ -90,6 +91,7 @@ interface Player {
   removeAt?: number;
   lastActionAt: number;
   lastCursorAt: number;
+  lastSelectAt: number;
 }
 
 interface RoundStats {
@@ -129,6 +131,7 @@ interface MahjongRound {
   state: MahjongState;
   moves: number;
   stats: Map<string, number>;
+  selections: Map<string, number>;
 }
 
 interface Round {
@@ -330,7 +333,10 @@ export class Room {
         layout: this.mahjong.state.layout,
         tiles: [...this.mahjong.state.tiles],
         moves: this.mahjong.moves,
-        shuffles: this.mahjong.state.shuffles
+        shuffles: this.mahjong.state.shuffles,
+        selections: [...this.mahjong.selections.entries()]
+          .sort((a, b) => a[1] - b[1])
+          .map(([by, i]) => ({ by, i }))
       };
     }
 
@@ -504,7 +510,8 @@ export class Room {
       connected: true,
       joinedAt: Date.now(),
       lastActionAt: 0,
-      lastCursorAt: 0
+      lastCursorAt: 0,
+      lastSelectAt: 0
     };
 
     this.players.set(player.id, player);
@@ -749,7 +756,8 @@ export class Room {
         startedAt: now,
         state: dealMahjong(this.settings.mahjongLayout, randomInt(0, 2 ** 31 - 1)),
         moves: 0,
-        stats: new Map([...this.players.keys()].map((id) => [id, 0] as const))
+        stats: new Map([...this.players.keys()].map((id) => [id, 0] as const)),
+        selections: new Map()
       };
       this.round = null;
       this.sudoku = null;
@@ -1216,6 +1224,10 @@ export class Room {
     if (!player || !mahjong) return;
     const now = Date.now();
     if (this.resumeAt && now < this.resumeAt) return;
+    if (message.action === 'select') {
+      this.handleMahjongSelect(player, mahjong, message.i);
+      return;
+    }
     if (now - player.lastActionAt < SUDOKU_ACTION_COOLDOWN_MS) return;
     player.lastActionAt = now;
 
@@ -1231,6 +1243,11 @@ export class Room {
     if (message.a === undefined || message.b === undefined) return;
     if (!playMatch(state, message.a, message.b)) return;
 
+    // A matched tile can no longer be anybody's current pick.
+    for (const [playerId, selected] of mahjong.selections) {
+      if (state.tiles[selected] < 0) mahjong.selections.delete(playerId);
+    }
+
     mahjong.moves += 1;
     mahjong.stats.set(player.id, (mahjong.stats.get(player.id) ?? 0) + 1);
     this.touch();
@@ -1239,6 +1256,27 @@ export class Room {
       this.endMahjong();
       return;
     }
+    this.broadcastRoom();
+  }
+
+  private handleMahjongSelect(
+    player: Player,
+    mahjong: MahjongRound,
+    i: number | null | undefined
+  ): void {
+    const now = Date.now();
+    if (now - player.lastSelectAt < SELECT_COOLDOWN_MS) return;
+    player.lastSelectAt = now;
+
+    if (i === null || i === undefined) {
+      if (!mahjong.selections.delete(player.id)) return;
+    } else {
+      if (!Number.isInteger(i) || i < 0 || i >= mahjong.state.tiles.length) return;
+      if (!isTileFree(mahjong.state.layout, mahjong.state.tiles, i)) return;
+      if (mahjong.selections.get(player.id) === i) return;
+      mahjong.selections.set(player.id, i);
+    }
+    this.touch();
     this.broadcastRoom();
   }
 
@@ -1370,6 +1408,7 @@ export class Room {
   private removePlayer(player: Player, explicit: boolean): void {
     const wasHost = player.id === this.hostId;
     this.players.delete(player.id);
+    this.mahjong?.selections.delete(player.id);
     if (wasHost) {
       if (this.hostTimer) clearTimeout(this.hostTimer);
       this.hostTimer = undefined;
@@ -1415,6 +1454,7 @@ export class Room {
     player.client = null;
     player.connected = false;
     player.removeAt = Date.now() + (this.status === 'playing' ? PLAYING_SEAT_TTL_MS : LOBBY_SEAT_TTL_MS);
+    this.mahjong?.selections.delete(player.id);
 
     this.broadcast(
       {

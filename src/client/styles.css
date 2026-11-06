@@ -2925,6 +2925,7 @@ body.modal-open {
 
 .solitaire-board {
   --card-w: clamp(38px, 5.4vw, 82px);
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: clamp(14px, 2vw, 24px);
@@ -3349,6 +3350,23 @@ body.modal-open {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.75),
     0 0 0 2px var(--accent-line);
+}
+
+.mahjong-board > .presence-layer {
+  z-index: 5000;
+}
+
+.mj-tile-remote-outlines {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.mj-tile-remote-outline {
+  position: absolute;
+  border: 2px solid;
+  border-radius: 9px;
 }
 
 .mj-tile-shake {

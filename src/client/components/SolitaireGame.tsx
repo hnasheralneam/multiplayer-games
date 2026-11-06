@@ -16,6 +16,7 @@ export interface SolitaireGameProps {
   onRecycle: () => void;
   onMove: (card: number, to: SolitaireSlot) => void;
   onAuto: (card: number) => void;
+  onCursor: (x: number, y: number) => void;
   onEndGame?: () => void;
 }
 
@@ -32,6 +33,7 @@ export function SolitaireGame({
   onRecycle,
   onMove,
   onAuto,
+  onCursor,
   onEndGame
 }: SolitaireGameProps) {
   const solitaire = room.solitaire;
@@ -112,6 +114,7 @@ export function SolitaireGame({
             onDraw={onDraw}
             onRecycle={onRecycle}
             onAuto={onAuto}
+            onCursor={onCursor}
           />
 
           {resuming && (
