@@ -8,6 +8,7 @@ import {
 } from '../../shared/types';
 import { ApiError, createRoom, fetchRoom, type Preview } from '../lib/api';
 import { copyText } from '../lib/copy';
+import { statusLabel } from '../lib/format';
 import { navigate, Link } from '../lib/router';
 import {
   clearToken,
@@ -23,14 +24,16 @@ import { Countdown } from '../components/Countdown';
 import { Game } from '../components/Game';
 import { InvitePanel } from '../components/InvitePanel';
 import { Lobby } from '../components/Lobby';
+import { MahjongGame } from '../components/MahjongGame';
 import { ProfileModal } from '../components/ProfileModal';
 import { Results } from '../components/Results';
 import { SolitaireGame } from '../components/SolitaireGame';
 import { SudokuGame } from '../components/SudokuGame';
 import { RoomChrome } from '../components/RoomChrome';
 import { SettingsSheet } from '../components/SettingsSheet';
+import { StateScreen } from '../components/StateScreen';
 import { IconArrow, IconEye, IconMine, IconRefresh, IconUsers } from '../components/icons';
-import { Logo, Modal, Spinner, Toast } from '../components/ui';
+import { Modal, Spinner, Toast } from '../components/ui';
 
 function useOnline(): boolean {
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -45,19 +48,6 @@ function useOnline(): boolean {
     };
   }, []);
   return online;
-}
-
-function LoadingRoom({ code }: { code: string }) {
-  return (
-    <div className="center-page">
-      <div className="center-card">
-        <Logo />
-        <Spinner label="Finding room" />
-        <h1>Finding room {code}…</h1>
-        <p>Checking who is already at the table.</p>
-      </div>
-    </div>
-  );
 }
 
 function JoiningRoom({
@@ -75,107 +65,24 @@ function JoiningRoom({
     return () => window.clearTimeout(timer);
   }, []);
   return (
-    <div className="center-page">
-      <div className="center-card">
-        <Logo />
-        <Spinner label="Joining room" />
-        <h1>Joining {code}…</h1>
-        <p>{slow ? 'This is taking longer than usual.' : 'Pulling up a chair.'}</p>
-        {slow && (
-          <div className="center-actions">
+    <StateScreen
+      logo
+      spinner
+      title={`Joining ${code}…`}
+      body={slow ? 'This is taking longer than usual.' : 'Pulling up a chair.'}
+      actions={
+        slow ? (
+          <>
             <button className="button button-secondary" onClick={onCancel}>
               Back home
             </button>
             <button className="button button-ghost" onClick={onReload}>
               <IconRefresh size={16} /> Reload
             </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MissingRoom({
-  code,
-  busy,
-  error,
-  onCreate
-}: {
-  code: string;
-  busy: boolean;
-  error: string | null;
-  onCreate: () => void;
-}) {
-  return (
-    <div className="center-page">
-      <div className="center-card">
-        <span className="eyebrow">Room not found</span>
-        <h1>No room with code {code}.</h1>
-        <p>
-          The code may have a typo, or the room closed after everyone left. Rooms stick around
-          for a day after the last player.
-        </p>
-        {error && (
-          <div className="inline-error" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="center-actions">
-          <Link className="button button-primary button-xl" to="/join">
-            Try another code <IconArrow size={18} />
-          </Link>
-          <button className="button button-secondary button-xl" onClick={onCreate} disabled={busy}>
-            {busy ? <Spinner label="Creating" /> : <IconMine size={18} />} Create a new room
-          </button>
-        </div>
-        <Link className="center-home" to="/">
-          Back home
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function NetworkRoom({
-  message,
-  busy,
-  error,
-  onRetry,
-  onCreate
-}: {
-  message: string;
-  busy: boolean;
-  error: string | null;
-  onRetry: () => void;
-  onCreate: () => void;
-}) {  return (
-    <div className="center-page">
-      <div className="center-card">
-        <span className="eyebrow">No signal</span>
-        <h1>Can't reach that room.</h1>
-        <p>{message}</p>
-        <p className="center-hint">
-          If the host is running the game on a laptop, everyone needs to be on the same Wi-Fi.
-        </p>
-        {error && (
-          <div className="inline-error" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="center-actions">
-          <button className="button button-primary button-xl" onClick={onRetry}>
-            <IconRefresh size={18} /> Try again
-          </button>
-          <button className="button button-secondary button-xl" onClick={onCreate} disabled={busy}>
-            Create a new room
-          </button>
-        </div>
-        <Link className="center-home" to="/">
-          Back home
-        </Link>
-      </div>
-    </div>
+          </>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -203,64 +110,23 @@ function FatalRoom({
             ? 'The room closed.'
             : 'Something broke.';
   return (
-    <div className="center-page">
-      <div className="center-card">
-        <span className="eyebrow">Room {code}</span>
-        <h1>{heading}</h1>
-        <p>{fatal.message}</p>
-        {error && (
-          <div className="inline-error" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="center-actions">
+    <StateScreen
+      eyebrow={`Room ${code}`}
+      title={heading}
+      body={fatal.message}
+      error={error}
+      actions={
+        <>
           <button className="button button-primary button-xl" onClick={onCreate} disabled={busy}>
             {busy ? <Spinner label="Creating" /> : <IconMine size={18} />} Start a new room
           </button>
           <Link className="button button-secondary button-xl" to="/join">
             Join with a code
           </Link>
-        </div>
-        <Link className="center-home" to="/">
-          Back home
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function JoinProblem({
-  code,
-  message,
-  busy,
-  onRetry,
-  onCreate
-}: {
-  code: string;
-  message: string;
-  busy: boolean;
-  onRetry: () => void;
-  onCreate: () => void;
-}) {
-  return (
-    <div className="center-page">
-      <div className="center-card">
-        <span className="eyebrow">Room {code}</span>
-        <h1>Couldn&apos;t take a seat.</h1>
-        <p>{message}</p>
-        <div className="center-actions">
-          <button className="button button-primary button-xl" onClick={onRetry} disabled={busy}>
-            <IconRefresh size={18} /> Try again
-          </button>
-          <button className="button button-secondary button-xl" onClick={onCreate} disabled={busy}>
-            Start a new room
-          </button>
-        </div>
-        <Link className="center-home" to="/">
-          Back home
-        </Link>
-      </div>
-    </div>
+        </>
+      }
+      home
+    />
   );
 }
 
@@ -301,6 +167,7 @@ export function RoomPage({ code }: { code: string }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [endOpen, setEndOpen] = useState(false);
   const [localToast, setLocalToast] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
@@ -408,16 +275,8 @@ export function RoomPage({ code }: { code: string }) {
 
   useEffect(() => {
     if (room) {
-      const label =
-        room.status === 'playing'
-          ? 'Live'
-          : room.status === 'countdown'
-            ? 'Starting'
-            : room.status === 'results'
-              ? 'Results'
-              : 'Lobby';
       const gameName = GAME_META[room.settings.game].label;
-      document.title = `${room.code} · ${label} · ${gameName}`;
+      document.title = `${room.code} · ${statusLabel(room.status)} · ${gameName}`;
     } else {
       document.title = `${code} · Games, together`;
     }
@@ -442,6 +301,7 @@ export function RoomPage({ code }: { code: string }) {
       setProfileOpen(false);
       setSettingsOpen(false);
     }
+    setEndOpen(false);
   }, [room?.status]);
 
   const createNew = async () => {
@@ -490,7 +350,8 @@ export function RoomPage({ code }: { code: string }) {
       maxPlayers: next.maxPlayers,
       lateJoin: next.lateJoin,
       sudokuDifficulty: next.sudokuDifficulty,
-      klondikeDraw: next.klondikeDraw
+      klondikeDraw: next.klondikeDraw,
+      mahjongLayout: next.mahjongLayout
     });
   };
 
@@ -508,6 +369,13 @@ export function RoomPage({ code }: { code: string }) {
     }, 260);
   };
 
+  const askEndGame = () => setEndOpen(true);
+
+  const endGame = () => {
+    setEndOpen(false);
+    send({ t: 'lobby' });
+  };
+
   if (state.fatal) {
     return (
       <FatalRoom
@@ -523,6 +391,7 @@ export function RoomPage({ code }: { code: string }) {
   if (room && you) {
     const spectator = you.role === 'spectator';
     const wideBoard =
+      room.status !== 'lobby' &&
       room.settings.game === 'minesweeper' &&
       room.settings.width > room.settings.height * 1.5;
     const canTakeSeat =
@@ -542,7 +411,12 @@ export function RoomPage({ code }: { code: string }) {
           onSettingsChange={applySettings}
         />
       ) : room.status === 'countdown' ? (
-        <Countdown room={room} you={you} serverOffset={state.serverOffset} />
+        <Countdown
+          room={room}
+          you={you}
+          serverOffset={state.serverOffset}
+          onCancel={() => send({ t: 'lobby' })}
+        />
       ) : room.status === 'results' && showResults ? (
         <Results
           room={room}
@@ -561,6 +435,7 @@ export function RoomPage({ code }: { code: string }) {
           serverOffset={state.serverOffset}
           sudokuRecent={state.sudokuRecent}
           onEntry={(i, digit) => send({ t: 'sudoku', i, digit })}
+          onEndGame={askEndGame}
         />
       ) : room.solitaire ? (
         <SolitaireGame
@@ -574,6 +449,17 @@ export function RoomPage({ code }: { code: string }) {
             send({ t: 'solitaire', action: 'move', card, to })
           }
           onAuto={(card: number) => send({ t: 'solitaire', action: 'auto', card })}
+          onEndGame={askEndGame}
+        />
+      ) : room.mahjong ? (
+        <MahjongGame
+          room={room}
+          you={you}
+          connected={state.connection === 'open'}
+          serverOffset={state.serverOffset}
+          onMatch={(a, b) => send({ t: 'mahjong', action: 'match', a, b })}
+          onShuffle={() => send({ t: 'mahjong', action: 'shuffle' })}
+          onEndGame={askEndGame}
         />
       ) : (
         <Game
@@ -587,6 +473,7 @@ export function RoomPage({ code }: { code: string }) {
           onFlag={(i) => send({ t: 'flag', i })}
           onChord={(i) => send({ t: 'chord', i })}
           onCursor={(x, y) => send({ t: 'cursor', x, y })}
+          onEndGame={askEndGame}
         />
       );
 
@@ -684,30 +571,90 @@ export function RoomPage({ code }: { code: string }) {
           </div>
         </Modal>
 
+        <Modal open={endOpen} onClose={() => setEndOpen(false)} title="End this game?">
+          <div className="confirm-body">
+            <p>
+              Everyone goes back to the lobby and this board is discarded — the round doesn't
+              count for anything.
+            </p>
+            <div className="settings-actions">
+              <button className="button button-ghost" onClick={() => setEndOpen(false)}>
+                Keep playing
+              </button>
+              <button className="button button-danger" onClick={endGame}>
+                End game
+              </button>
+            </div>
+          </div>
+        </Modal>
+
         <Toast message={localToast ?? state.toast?.message ?? null} />
       </div>
     );
   }
 
-  if (previewState === 'loading') return <LoadingRoom code={code} />;
+  if (previewState === 'loading') {
+    return (
+      <StateScreen
+        logo
+        spinner
+        title={`Finding room ${code}…`}
+        body="Checking who is already at the table."
+      />
+    );
+  }
   if (previewState === 'missing') {
     return (
-      <MissingRoom
-        code={code}
-        busy={actionBusy}
+      <StateScreen
+        eyebrow="Room not found"
+        title={`No room with code ${code}.`}
+        body="The code may have a typo, or the room closed after everyone left. Rooms stick around for a day after the last player."
         error={actionError}
-        onCreate={() => void createNew()}
+        actions={
+          <>
+            <Link className="button button-primary button-xl" to="/join">
+              Try another code <IconArrow size={18} />
+            </Link>
+            <button
+              className="button button-secondary button-xl"
+              onClick={() => void createNew()}
+              disabled={actionBusy}
+            >
+              {actionBusy ? <Spinner label="Creating" /> : <IconMine size={18} />} Create a new
+              room
+            </button>
+          </>
+        }
+        home
       />
     );
   }
   if (previewState === 'error') {
     return (
-      <NetworkRoom
-        message={previewMessage ?? 'The room did not answer.'}
-        busy={actionBusy}
+      <StateScreen
+        eyebrow="No signal"
+        title="Can't reach that room."
+        body={previewMessage ?? 'The room did not answer.'}
+        hint="If the host is running the game on a laptop, everyone needs to be on the same Wi-Fi."
         error={actionError}
-        onRetry={() => setReloadKey((value) => value + 1)}
-        onCreate={() => void createNew()}
+        actions={
+          <>
+            <button
+              className="button button-primary button-xl"
+              onClick={() => setReloadKey((value) => value + 1)}
+            >
+              <IconRefresh size={18} /> Try again
+            </button>
+            <button
+              className="button button-secondary button-xl"
+              onClick={() => void createNew()}
+              disabled={actionBusy}
+            >
+              Create a new room
+            </button>
+          </>
+        }
+        home
       />
     );
   }
@@ -726,15 +673,32 @@ export function RoomPage({ code }: { code: string }) {
 
   if (state.joinError && state.joinError.code !== 'full') {
     return (
-      <JoinProblem
-        code={code}
-        message={state.joinError.message}
-        busy={actionBusy}
-        onRetry={() => {
-          setJoining(true);
-          connect({ name: profile.name, avatar: profile.avatar });
-        }}
-        onCreate={() => void createNew()}
+      <StateScreen
+        eyebrow={`Room ${code}`}
+        title="Couldn't take a seat."
+        body={state.joinError.message}
+        actions={
+          <>
+            <button
+              className="button button-primary button-xl"
+              onClick={() => {
+                setJoining(true);
+                connect({ name: profile.name, avatar: profile.avatar });
+              }}
+              disabled={actionBusy}
+            >
+              <IconRefresh size={18} /> Try again
+            </button>
+            <button
+              className="button button-secondary button-xl"
+              onClick={() => void createNew()}
+              disabled={actionBusy}
+            >
+              Start a new room
+            </button>
+          </>
+        }
+        home
       />
     );
   }
@@ -752,5 +716,12 @@ export function RoomPage({ code }: { code: string }) {
     );
   }
 
-  return <LoadingRoom code={code} />;
+  return (
+    <StateScreen
+      logo
+      spinner
+      title={`Finding room ${code}…`}
+      body="Checking who is already at the table."
+    />
+  );
 }

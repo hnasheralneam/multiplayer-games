@@ -11,10 +11,12 @@ import {
   SUDOKU_DIFFICULTY_IDS,
   isSolitaireVariant,
   type KlondikeDraw,
+  type MahjongLayout,
   type PresetId,
   type RoomSettings,
   type SudokuDifficulty
 } from '../../shared/types';
+import { MAHJONG_LAYOUTS, MAHJONG_LAYOUT_IDS, mahjongTileTotal } from '../../shared/mahjong';
 import { Modal } from './ui';
 import { IconCheck } from './icons';
 
@@ -37,6 +39,7 @@ export function SettingsSheet({
   const [lateJoin, setLateJoin] = useState(settings.lateJoin);
   const [difficulty, setDifficulty] = useState<SudokuDifficulty>(settings.sudokuDifficulty);
   const [klondikeDraw, setKlondikeDraw] = useState<KlondikeDraw>(settings.klondikeDraw);
+  const [mahjongLayout, setMahjongLayout] = useState<MahjongLayout>(settings.mahjongLayout);
 
   useEffect(() => {
     if (!open) return;
@@ -46,6 +49,7 @@ export function SettingsSheet({
     setLateJoin(settings.lateJoin);
     setDifficulty(settings.sudokuDifficulty);
     setKlondikeDraw(settings.klondikeDraw);
+    setMahjongLayout(settings.mahjongLayout);
   }, [open, settings]);
 
   const apply = () => {
@@ -60,18 +64,22 @@ export function SettingsSheet({
       maxPlayers,
       lateJoin,
       sudokuDifficulty: difficulty,
-      klondikeDraw
+      klondikeDraw,
+      mahjongLayout
     });
     onClose();
   };
 
   const sudoku = settings.game === 'sudoku';
   const solitaire = isSolitaireVariant(settings.game);
+  const mahjong = settings.game === 'mahjong';
   const title = sudoku
     ? 'Sudoku settings'
     : solitaire
       ? `${GAME_META[settings.game].label} settings`
-      : 'Minesweeper settings';
+      : mahjong
+        ? 'Mahjongg settings'
+        : 'Minesweeper settings';
 
   const lowestSeats = Math.max(MIN_PLAYERS, playerCount);
 
@@ -94,6 +102,28 @@ export function SettingsSheet({
                   aria-pressed={difficulty === id}
                 >
                   {SUDOKU_DIFFICULTIES[id].label} · {SUDOKU_DIFFICULTIES[id].clues}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : mahjong ? (
+          <section className="settings-section">
+            <div className="settings-label">
+              <span>Layout</span>
+              <span className="settings-hint">
+                Bigger stacks take longer; every deal is guaranteed solvable.
+              </span>
+            </div>
+            <div className="segmented">
+              {MAHJONG_LAYOUT_IDS.map((id) => (
+                <button
+                  type="button"
+                  key={id}
+                  className={mahjongLayout === id ? 'segmented-on' : ''}
+                  onClick={() => setMahjongLayout(id)}
+                  aria-pressed={mahjongLayout === id}
+                >
+                  {MAHJONG_LAYOUTS[id].label} · {mahjongTileTotal(id)}
                 </button>
               ))}
             </div>

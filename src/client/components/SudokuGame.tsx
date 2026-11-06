@@ -4,9 +4,9 @@ import {
   type PublicRoom,
   type You
 } from '../../shared/types';
-import { formatClock } from '../lib/format';
+import { GameHud, HudEndGame, HudMode, HudTimer } from './GameHud';
 import { useNow } from './ui';
-import { IconClock, IconSudoku } from './icons';
+import { IconSudoku } from './icons';
 import { PlayerStrip } from './PlayerStrip';
 import { SudokuBoard, type SudokuEntryView } from './SudokuBoard';
 
@@ -17,6 +17,7 @@ export interface SudokuGameProps {
   serverOffset: number;
   sudokuRecent: { i: number; seq: number } | null;
   onEntry: (i: number, digit: number) => void;
+  onEndGame?: () => void;
 }
 
 function firstEmpty(givens: number[]): number | null {
@@ -32,15 +33,22 @@ export function SudokuGame({
   connected,
   serverOffset,
   sudokuRecent,
-  onEntry
+  onEntry,
+  onEndGame
 }: SudokuGameProps) {
   const sudoku = room.sudoku;
   const now = useNow(200);
   const serverNow = now + serverOffset;
   const [selected, setSelected] = useState<number | null>(null);
+  const [notes, setNotes] = useState<Map<number, Set<number>>>(new Map());
+  const [notesMode, setNotesMode] = useState(false);
 
   useEffect(() => {
-    if (sudoku) setSelected(firstEmpty(sudoku.givens));
+    if (sudoku) {
+      setSelected(firstEmpty(sudoku.givens));
+      setNotes(new Map());
+      setNotesMode(false);
+    }
   }, [sudoku?.id]);
 
   const entries = useMemo(() => {
@@ -70,6 +78,7 @@ export function SudokuGame({
   const selectedGiven = selected !== null && Boolean(sudoku.givens[selected]);
   const selectedDigit =
     selected === null ? 0 : sudoku.givens[selected] || entries.get(selected)?.digit || 0;
+  const selectedNotes = selected !== null ? notes.get(selected) : undefined;
   const final = room.status === 'results' && room.lastResult?.game === 'sudoku';
 
   const digitCounts = new Map<number, number>();
@@ -85,13 +94,63 @@ export function SudokuGame({
     if (!resuming) setSelected(i);
   };
 
+  const toggleNote = (digit: number) => {
+    if (!canPlay || selected === null || selectedGiven || entries.has(selected)) return;
+    const cell = selected;
+    setNotes((prev) => {
+      const next = new Map(prev);
+      const marks = new Set(next.get(cell) ?? []);
+      if (marks.has(digit)) marks.delete(digit);
+      else marks.add(digit);
+      if (marks.size) next.set(cell, marks);
+      else next.delete(cell);
+      return next;
+    });
+  };
+
   const put = (digit: number) => {
     if (!canPlay || selected === null || selectedGiven) return;
-    onEntry(selected, digit);
+    const cell = selected;
+    if (notesMode) {
+      toggleNote(digit);
+      return;
+    }
+    onEntry(cell, digit);
+    setNotes((prev) => {
+      if (!prev.has(cell)) return prev;
+      const next = new Map(prev);
+      next.delete(cell);
+      return next;
+    });
+  };
+
+  const erase = () => {
+    if (!canPlay || selected === null || selectedGiven) return;
+    const cell = selected;
+    if (entries.has(cell)) {
+      onEntry(cell, 0);
+      return;
+    }
+    setNotes((prev) => {
+      if (!prev.has(cell)) return prev;
+      const next = new Map(prev);
+      next.delete(cell);
+      return next;
+    });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === 'n' || event.key === 'N') {
+      event.preventDefault();
+      setNotesMode((mode) => !mode);
+      return;
+    }
+    if (event.shiftKey && /^(Digit|Numpad)[1-9]$/.test(event.code)) {
+      event.preventDefault();
+      toggleNote(Number(event.code.slice(-1)));
+      return;
+    }
     if (/^[1-9]$/.test(event.key)) {
       event.preventDefault();
       put(Number(event.key));
@@ -99,9 +158,7 @@ export function SudokuGame({
     }
     if (event.key === 'Backspace' || event.key === 'Delete' || event.key === '0') {
       event.preventDefault();
-      if (canPlay && selected !== null && !selectedGiven && entries.has(selected)) {
-        onEntry(selected, 0);
-      }
+      erase();
       return;
     }
     if (event.key.startsWith('Arrow') && selected !== null) {
@@ -120,26 +177,29 @@ export function SudokuGame({
 
   return (
     <section className={`sudoku-game ${final ? 'sudoku-game-final' : ''}`} aria-label="Sudoku">
-      <div className="game-hud sudoku-hud">
-        <div className="hud-left">
-          <span className="hud-timer">
-            <IconClock size={15} />
-            {formatClock(elapsed / 1000)}
+      <GameHud
+        left={
+          <>
+            <HudTimer seconds={elapsed / 1000} />
+            <HudMode icon={<IconSudoku size={14} />}>
+              Sudoku · {SUDOKU_DIFFICULTIES[sudoku.difficulty].label}
+            </HudMode>
+          </>
+        }
+        center={
+          <span className="hud-progress" aria-live="polite">
+            <strong>{filled}</strong>
+            <span>/ 81</span>
+            {wrongCells > 0 && <em>{wrongCells} red</em>}
           </span>
-          <span className="sudoku-mode">
-            <IconSudoku size={14} />
-            SUDOKU · {SUDOKU_DIFFICULTIES[sudoku.difficulty].label}
-          </span>
-        </div>
-        <div className="sudoku-progress" aria-live="polite">
-          <strong>{filled}</strong>
-          <span>/ 81</span>
-          {wrongCells > 0 && <em>{wrongCells} red</em>}
-        </div>
-        <div className="hud-right">
-          <span>{remaining} left</span>
-        </div>
-      </div>
+        }
+        right={
+          <>
+            <span>{remaining} left</span>
+            {onEndGame && you.id === room.hostId && <HudEndGame onClick={onEndGame} />}
+          </>
+        }
+      />
 
       <PlayerStrip players={room.players} you={you} />
 
@@ -148,6 +208,7 @@ export function SudokuGame({
           <SudokuBoard
             givens={sudoku.givens}
             entries={entries}
+            notes={notes}
             players={players}
             selected={selected}
             onSelect={choose}
@@ -180,8 +241,11 @@ export function SudokuGame({
                   type="button"
                   className={`sudoku-key ${placed >= 9 ? 'sudoku-key-done' : ''}`}
                   onClick={() => put(digit)}
-                  disabled={!canPlay || selected === null || selectedGiven}
-                  aria-label={`Enter ${digit}`}
+                  disabled={
+                    !canPlay || selected === null || selectedGiven ||
+                    (notesMode && entries.has(selected))
+                  }
+                  aria-label={notesMode ? `Toggle note ${digit}` : `Enter ${digit}`}
                 >
                   <strong>{digit}</strong>
                   <span>{Math.max(0, 9 - placed)}</span>
@@ -189,20 +253,31 @@ export function SudokuGame({
               );
             })}
           </div>
-          <button
-            type="button"
-            className="sudoku-erase"
-            onClick={() => {
-              if (canPlay && selected !== null && !selectedGiven && entries.has(selected)) {
-                onEntry(selected, 0);
+          <div className="sudoku-actions">
+            <button
+              type="button"
+              className={`sudoku-erase ${notesMode ? 'sudoku-toggle-on' : ''}`}
+              onClick={() => setNotesMode((mode) => !mode)}
+              aria-pressed={notesMode}
+            >
+              Notes
+            </button>
+            <button
+              type="button"
+              className="sudoku-erase"
+              onClick={erase}
+              disabled={
+                !canPlay ||
+                selected === null ||
+                selectedGiven ||
+                (!entries.has(selected) && !(selectedNotes && selectedNotes.size > 0))
               }
-            }}
-            disabled={!canPlay || selected === null || selectedGiven || !entries.has(selected)}
-          >
-            Erase
-          </button>
+            >
+              Erase
+            </button>
+          </div>
           <p className="sudoku-help">
-            Tap a cell, then a number. Arrow keys and 1–9 work too.
+            Tap a cell, then a number. Shift + number or N toggles pencil notes.
           </p>
           <div className="sudoku-legend">
             <span><i className="legend-dot legend-given" /> given</span>

@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   GAME_META,
   SUDOKU_DIFFICULTIES,
+  type Avatar as AvatarType,
+  type MahjongResult,
   type PublicPlayer,
   type PublicRoom,
   type RoundResult,
@@ -9,6 +11,7 @@ import {
   type SudokuResult,
   type You
 } from '../../shared/types';
+import { MAHJONG_LAYOUTS } from '../../shared/mahjong';
 import { copyText } from '../lib/copy';
 import { formatClock, percent, plural } from '../lib/format';
 import { Board } from './Board';
@@ -36,6 +39,36 @@ interface ResultsProps {
   onLobby: () => void;
   onInvite: () => void;
   onLeave: () => void;
+}
+
+interface StatRowView {
+  key: string;
+  avatar: AvatarType;
+  color: string;
+  name: string;
+  you: boolean;
+  badge?: string;
+  share?: number;
+  primary: ReactNode;
+  secondary?: ReactNode;
+}
+
+interface ResultView {
+  won: boolean;
+  icon: ReactNode;
+  eyebrow: string;
+  headline: string;
+  lede: string;
+  metrics: Array<[string, ReactNode]>;
+  statsTitle: string;
+  primaryLabel: string;
+  secondaryLabel: string | null;
+  rows: StatRowView[];
+  copyText: string;
+  boardTitle: string;
+  boardLabel: string;
+  board: ReactNode;
+  hasBoard: boolean;
 }
 
 function LobbyReturn({
@@ -73,78 +106,265 @@ function LobbyReturn({
         </div>
       )}
       <span className="lobby-return-note">
-        {isHost ? `Auto-returns in ${remaining}s. Pick the next game together.` : 'The host can stay or pick a new game.'}
+        {isHost
+          ? `Auto-returns in ${remaining}s. Pick the next game together.`
+          : 'The host can stay or pick a new game.'}
       </span>
     </div>
   );
 }
 
-function resultText(result: RoundResult): string {
-  const headline = result.result === 'won' ? 'Minesweeper — cleared' : 'Minesweeper — boom';
-  const lives = `${result.livesLeft} ${plural(result.livesLeft, 'life', 'lives')} left`;
-  const players = result.stats
-    .map((stat) => `${stat.avatar} ${stat.name} ${percent(stat.share)}`)
-    .join(' · ');
-  return `💣 ${headline}\n🕒 ${formatClock(result.durationMs / 1000)} · ❤️ ${lives}\n${players}`;
+function playersMap(room: PublicRoom): Map<string, PublicPlayer> {
+  return new Map(room.players.map((player) => [player.id, player]));
 }
 
-export function Results(props: ResultsProps) {
-  const result = props.room.lastResult;
-  if (!result) {
-    return (
-      <div className="results">
-        <div className="results-card">
-          <span className="eyebrow">Results</span>
-          <h1>Waiting for the board…</h1>
-          <p className="results-lede">The final score will land here.</p>
-        </div>
-      </div>
-    );
-  }
-  if (result.game === 'sudoku') {
-    return <SudokuResults {...props} result={result} />;
-  }
-  if (result.game === 'klondike' || result.game === 'freecell') {
-    return <SolitaireResults {...props} result={result} />;
-  }
-  if (result.game !== 'minesweeper') return null;
-  return <MinesweeperResults {...props} result={result} />;
-}
-
-function MinesweeperResults({
-  room,
-  you,
-  connected,
-  serverOffset,
-  result,
-  onLobby,
-  onInvite,
-  onLeave
-}: ResultsProps & { result: RoundResult }) {
-  const [copied, setCopied] = useState(false);
-  const [showBoard, setShowBoard] = useState(false);
-  const isHost = room.hostId === you.id;
-
-  const revealed = useMemo(
-    () => new Map((result.revealed ?? []).map((cell) => [cell.i, cell.n] as const)),
-    [result]
-  );
-  const flags = useMemo(
-    () => new Map((result.flags ?? []).map((flag) => [flag.i, flag.by] as const)),
-    [result]
-  );
-  const mines = useMemo(() => new Set(result.mines ?? []), [result]);
-  const players = useMemo(
-    () => new Map(room.players.map((player) => [player.id, player])),
-    [room.players]
-  );
-
+function minesweeperView(
+  result: RoundResult,
+  room: PublicRoom,
+  you: You
+): ResultView {
   const boardWidth = room.round?.width ?? room.settings.width;
   const boardHeight = room.round?.height ?? room.settings.height;
   const won = result.result === 'won';
   const minesHit = result.stats.reduce((sum, stat) => sum + stat.minesHit, 0);
+  return {
+    won,
+    icon: won ? <IconCrown size={28} /> : <IconSkull size={28} />,
+    eyebrow: won ? 'Round cleared' : 'Out of lives',
+    headline: won ? 'Board cleared.' : 'Boom.',
+    lede: won
+      ? minesHit === 0
+        ? 'Flawless. Not a single mine touched.'
+        : `The table made it with ${result.livesLeft} ${plural(result.livesLeft, 'life', 'lives')} to spare.`
+      : 'The last heart is gone. The board gets the last word.',
+    metrics: [
+      ['Time', formatClock(result.durationMs / 1000)],
+      ['Lives left', `${result.livesLeft}/${result.startingLives}`],
+      ['Mines hit', String(minesHit)],
+      ['Cells', `${result.revealed.length}/${boardWidth * boardHeight}`]
+    ],
+    statsTitle: 'Swept by',
+    primaryLabel: 'Flags',
+    secondaryLabel: 'Mines',
+    rows: result.stats.map((stat, index) => ({
+      key: stat.playerId,
+      avatar: stat.avatar,
+      color: stat.color,
+      name: stat.name,
+      you: stat.playerId === you.id,
+      badge: index === 0 && result.stats.length > 1 ? 'most swept' : undefined,
+      share: stat.share,
+      primary: (
+        <>
+          <IconFlag size={15} /> {stat.flags}
+        </>
+      ),
+      secondary: (
+        <>
+          <IconMine size={13} /> {stat.minesHit}
+        </>
+      )
+    })),
+    copyText: (() => {
+      const lives = `${result.livesLeft} ${plural(result.livesLeft, 'life', 'lives')} left`;
+      const players = result.stats
+        .map((stat) => `${stat.avatar} ${stat.name} ${percent(stat.share)}`)
+        .join(' · ');
+      return `💣 Minesweeper — ${won ? 'cleared' : 'boom'}\n🕒 ${formatClock(result.durationMs / 1000)} · ❤️ ${lives}\n${players}`;
+    })(),
+    boardTitle: 'Final board',
+    boardLabel: 'board',
+    hasBoard: true,
+    board: (
+      <div className="final-board">
+        <Board
+          width={boardWidth}
+          height={boardHeight}
+          revealed={new Map((result.revealed ?? []).map((cell) => [cell.i, cell.n] as const))}
+          flags={new Map((result.flags ?? []).map((flag) => [flag.i, flag.by] as const))}
+          players={playersMap(room)}
+          meId={you.id}
+          mode="reveal"
+          disabled
+          onReveal={() => undefined}
+          onFlag={() => undefined}
+          onChord={() => undefined}
+          recent={new Map()}
+          stale={null}
+          mines={new Set(result.mines ?? [])}
+          final
+          showCursors={false}
+        />
+      </div>
+    )
+  };
+}
+
+function sudokuView(result: SudokuResult, room: PublicRoom, you: You): ResultView {
+  const difficulty = SUDOKU_DIFFICULTIES[result.difficulty].label;
+  const totalMistakes = result.stats.reduce((sum, stat) => sum + stat.wrong, 0);
+  const entries = new Map<number, SudokuEntryView>();
+  for (const entry of result.entries) {
+    entries.set(entry.i, { digit: entry.digit, by: entry.by, wrong: entry.wrong });
+  }
+  return {
+    won: true,
+    icon: <IconSudoku size={28} />,
+    eyebrow: 'Sudoku solved',
+    headline: 'Grid complete.',
+    lede: `${difficulty} · ${formatClock(result.durationMs / 1000)} · ${result.stats.length} ${plural(result.stats.length, 'player', 'players')} at the table.`,
+    metrics: [
+      ['Time', formatClock(result.durationMs / 1000)],
+      ['Difficulty', difficulty],
+      ['Filled', '81/81'],
+      ['Mistakes', String(totalMistakes)]
+    ],
+    statsTitle: 'Filled by',
+    primaryLabel: 'Correct',
+    secondaryLabel: 'Mistakes',
+    rows: result.stats.map((stat, index) => ({
+      key: stat.playerId,
+      avatar: stat.avatar,
+      color: stat.color,
+      name: stat.name,
+      you: stat.playerId === you.id,
+      badge: index === 0 && result.stats.length > 1 ? 'most filled' : undefined,
+      primary: stat.correct,
+      secondary: stat.wrong
+    })),
+    copyText: (() => {
+      const players = result.stats
+        .map((stat) => `${stat.avatar} ${stat.name} ${stat.correct}`)
+        .join(' · ');
+      return `🧩 Sudoku ${difficulty} — solved\n🕒 ${formatClock(result.durationMs / 1000)} · ${result.stats.length} players\n${players}`;
+    })(),
+    boardTitle: 'Solved grid',
+    boardLabel: 'grid',
+    hasBoard: true,
+    board: (
+      <div className="final-board">
+        <SudokuBoard
+          givens={result.givens}
+          entries={entries}
+          players={playersMap(room)}
+          selected={null}
+        />
+      </div>
+    )
+  };
+}
+
+function solitaireView(result: SolitaireResult, room: PublicRoom, you: You): ResultView {
+  const label = GAME_META[result.game].label;
+  return {
+    won: true,
+    icon: <GameIcon game={result.game} size={28} />,
+    eyebrow: `${label} solved`,
+    headline: 'Every card home.',
+    lede:
+      result.game === 'klondike'
+        ? `Draw ${result.draw} · ${formatClock(result.durationMs / 1000)} · ${result.stats.length} ${plural(result.stats.length, 'player', 'players')} at the table.`
+        : `Four free cells, no stock · ${formatClock(result.durationMs / 1000)} · ${result.stats.length} ${plural(result.stats.length, 'player', 'players')} at the table.`,
+    metrics: [
+      ['Time', formatClock(result.durationMs / 1000)],
+      ['Moves', String(result.moves)],
+      ['Passes', String(result.passes)],
+      [result.game === 'klondike' ? 'Draw' : 'Home', result.game === 'klondike' ? String(result.draw) : '52/52']
+    ],
+    statsTitle: 'Moved by',
+    primaryLabel: 'Moves',
+    secondaryLabel: null,
+    rows: result.stats.map((stat, index) => ({
+      key: stat.playerId,
+      avatar: stat.avatar,
+      color: stat.color,
+      name: stat.name,
+      you: stat.playerId === you.id,
+      badge: index === 0 && result.stats.length > 1 ? 'most moves' : undefined,
+      primary: stat.moves
+    })),
+    copyText: (() => {
+      const players = result.stats
+        .map((stat) => `${stat.avatar} ${stat.name} ${stat.moves}`)
+        .join(' · ');
+      return `🃏 ${label} — solved\n🕒 ${formatClock(result.durationMs / 1000)} · ${result.moves} moves · ${result.passes} passes\n${players}`;
+    })(),
+    boardTitle: 'Final table',
+    boardLabel: 'table',
+    hasBoard: Boolean(room.solitaire),
+    board: room.solitaire ? (
+      <div className="final-board">
+        <SolitaireBoard
+          solitaire={room.solitaire}
+          selected={null}
+          disabled
+          onSelect={() => undefined}
+          onMove={() => undefined}
+          onDraw={() => undefined}
+          onRecycle={() => undefined}
+          onAuto={() => undefined}
+        />
+      </div>
+    ) : null
+  };
+}
+
+function mahjongView(result: MahjongResult, _room: PublicRoom, you: You): ResultView {
+  const layout = MAHJONG_LAYOUTS[result.layout];
+  const totalShuffles = result.shuffles;
+  return {
+    won: true,
+    icon: <GameIcon game="mahjong" size={28} />,
+    eyebrow: 'Mahjongg cleared',
+    headline: 'Stack cleared.',
+    lede: `${layout.label} · ${formatClock(result.durationMs / 1000)} · ${result.stats.length} ${plural(result.stats.length, 'player', 'players')} at the table.`,
+    metrics: [
+      ['Time', formatClock(result.durationMs / 1000)],
+      ['Layout', layout.label],
+      ['Moves', String(result.moves)],
+      ['Shuffles', String(totalShuffles)]
+    ],
+    statsTitle: 'Matched by',
+    primaryLabel: 'Matches',
+    secondaryLabel: null,
+    rows: result.stats.map((stat, index) => ({
+      key: stat.playerId,
+      avatar: stat.avatar,
+      color: stat.color,
+      name: stat.name,
+      you: stat.playerId === you.id,
+      badge: index === 0 && result.stats.length > 1 ? 'most matches' : undefined,
+      primary: stat.matches
+    })),
+    copyText: (() => {
+      const players = result.stats
+        .map((stat) => `${stat.avatar} ${stat.name} ${stat.matches}`)
+        .join(' · ');
+      return `🀄 Mahjongg ${layout.label} — cleared\n🕒 ${formatClock(result.durationMs / 1000)} · ${result.moves} moves · ${result.shuffles} shuffles\n${players}`;
+    })(),
+    boardTitle: 'Cleared stack',
+    boardLabel: 'stack',
+    hasBoard: false,
+    board: null
+  };
+}
+
+function ResultsCard({
+  room,
+  you,
+  connected,
+  serverOffset,
+  view,
+  onLobby,
+  onInvite,
+  onLeave
+}: ResultsProps & { view: ResultView }) {
+  const [copied, setCopied] = useState(false);
+  const [showBoard, setShowBoard] = useState(false);
+  const isHost = room.hostId === you.id;
+
   const copy = async () => {
-    const ok = await copyText(resultText(result));
+    const ok = await copyText(view.copyText);
     if (ok) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2200);
@@ -152,77 +372,53 @@ function MinesweeperResults({
   };
 
   return (
-    <div className={`results ${won ? 'results-won' : 'results-lost'}`}>
-      {won && <Confetti />}
+    <div className={`results ${view.won ? 'results-won' : 'results-lost'}`}>
+      {view.won && <Confetti />}
       <div className="results-card">
         <div className="results-hero">
-          <span className="results-icon">
-            {won ? <IconCrown size={30} /> : <IconSkull size={30} />}
-          </span>
-          <span className="eyebrow">{won ? 'Round cleared' : 'Out of lives'}</span>
-          <h1>{won ? 'Board cleared.' : 'Boom.'}</h1>
-          <p className="results-lede">
-            {won
-              ? minesHit === 0
-                ? 'Flawless. Not a single mine touched.'
-                : `The table made it with ${result.livesLeft} ${plural(result.livesLeft, 'life', 'lives')} to spare.`
-              : 'The last heart is gone. The board gets the last word.'}
-          </p>
+          <span className="results-icon">{view.icon}</span>
+          <span className="eyebrow">{view.eyebrow}</span>
+          <h1>{view.headline}</h1>
+          <p className="results-lede">{view.lede}</p>
         </div>
 
         <div className="result-metrics">
-          <div>
-            <span>Time</span>
-            <strong>{formatClock(result.durationMs / 1000)}</strong>
-          </div>
-          <div>
-            <span>Lives left</span>
-            <strong>
-              {result.livesLeft}/{result.startingLives}
-            </strong>
-          </div>
-          <div>
-            <span>Mines hit</span>
-            <strong>{minesHit}</strong>
-          </div>
-          <div>
-            <span>Cells</span>
-            <strong>
-              {result.revealed.length}/{boardWidth * boardHeight}
-            </strong>
-          </div>
+          {view.metrics.map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
         </div>
 
         <div className="result-stats">
           <div className="result-stats-head">
-            <span>Swept by</span>
-            <span>Flags</span>
-            <span>Mines</span>
+            <span>{view.statsTitle}</span>
+            <span>{view.primaryLabel}</span>
+            <span>{view.secondaryLabel ?? ''}</span>
           </div>
-          {result.stats.map((stat, index) => (
-            <div className="result-row" key={stat.playerId}>
+          {view.rows.map((row) => (
+            <div className="result-row" key={row.key}>
               <span className="result-player">
-                <Avatar avatar={stat.avatar} color={stat.color} size={32} />
+                <Avatar avatar={row.avatar} color={row.color} size={30} />
                 <span className="result-name">
-                  {stat.name}
-                  {stat.playerId === you.id && <em>you</em>}
-                  {index === 0 && result.stats.length > 1 && (
-                    <span className="result-badge">most swept</span>
-                  )}
+                  {row.name}
+                  {row.you && <em>you</em>}
+                  {row.badge && <span className="result-badge">{row.badge}</span>}
                 </span>
-                <span className="result-share">
-                  <span className="result-bar">
-                    <span style={{ width: `${Math.max(2, stat.share * 100)}%`, background: stat.color }} />
+                {row.share !== undefined && (
+                  <span className="result-share">
+                    <span className="result-bar">
+                      <span
+                        style={{ width: `${Math.max(2, row.share * 100)}%`, background: row.color }}
+                      />
+                    </span>
+                    <strong>{percent(row.share)}</strong>
                   </span>
-                  <strong>{percent(stat.share)}</strong>
-                </span>
+                )}
               </span>
-              <span className="result-flag">
-                <IconFlag size={17} /> {stat.flags}
-              </span>
-              <span className="result-mine">
-                <IconMine size={14} /> {stat.minesHit}
-              </span>
+              <span className="result-stat">{row.primary}</span>
+              <span className="result-stat">{row.secondary}</span>
             </div>
           ))}
         </div>
@@ -240,9 +436,11 @@ function MinesweeperResults({
             {copied ? <IconCheck size={17} /> : <IconCopy size={17} />}
             {copied ? 'Copied' : 'Copy result'}
           </button>
-          <button className="button button-ghost" onClick={() => setShowBoard(true)}>
-            <IconEye size={17} /> See the board
-          </button>
+          {view.hasBoard && (
+            <button className="button button-ghost" onClick={() => setShowBoard(true)}>
+              <IconEye size={17} /> See the {view.boardLabel}
+            </button>
+          )}
         </div>
 
         <div className="results-foot">
@@ -260,325 +458,51 @@ function MinesweeperResults({
         </div>
       </div>
 
-      <Modal open={showBoard} onClose={() => setShowBoard(false)} title="Final board" wide>
-        <div className="final-board">
-          <Board
-            width={boardWidth}
-            height={boardHeight}
-            revealed={revealed}
-            flags={flags}
-            players={players}
-            meId={you.id}
-            mode="reveal"
-            disabled
-            onReveal={() => undefined}
-            onFlag={() => undefined}
-            onChord={() => undefined}
-            recent={new Map()}
-            stale={null}
-            mines={mines}
-            final
-            showCursors={false}
-          />
-        </div>
-      </Modal>
-    </div>
-  );
-}
-
-function solitaireResultText(result: SolitaireResult): string {
-  const label = GAME_META[result.game].label;
-  const players = result.stats
-    .map((stat) => `${stat.avatar} ${stat.name} ${stat.moves}`)
-    .join(' · ');
-  return `🃏 ${label} — solved\n🕒 ${formatClock(result.durationMs / 1000)} · ${result.moves} moves · ${result.passes} passes\n${players}`;
-}
-
-function SolitaireResults({
-  room,
-  you,
-  connected,
-  serverOffset,
-  result,
-  onLobby,
-  onInvite,
-  onLeave
-}: ResultsProps & { result: SolitaireResult }) {
-  const [copied, setCopied] = useState(false);
-  const [showBoard, setShowBoard] = useState(false);
-  const isHost = room.hostId === you.id;
-  const label = GAME_META[result.game].label;
-  const copy = async () => {
-    const ok = await copyText(solitaireResultText(result));
-    if (ok) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2200);
-    }
-  };
-
-  return (
-    <div className="results results-won">
-      <Confetti />
-      <div className="results-card">
-        <div className="results-hero">
-          <span className="results-icon">
-            <GameIcon game={result.game} size={30} />
-          </span>
-          <span className="eyebrow">{label} solved</span>
-          <h1>Every card home.</h1>
-          <p className="results-lede">
-            {result.game === 'klondike'
-              ? `Draw ${result.draw} · ${formatClock(result.durationMs / 1000)} · ${result.stats.length} ${plural(result.stats.length, 'player', 'players')} at the table.`
-              : `Four free cells, no stock · ${formatClock(result.durationMs / 1000)} · ${result.stats.length} ${plural(result.stats.length, 'player', 'players')} at the table.`}
-          </p>
-        </div>
-
-        <div className="result-metrics">
-          <div>
-            <span>Time</span>
-            <strong>{formatClock(result.durationMs / 1000)}</strong>
-          </div>
-          <div>
-            <span>Moves</span>
-            <strong>{result.moves}</strong>
-          </div>
-          <div>
-            <span>Passes</span>
-            <strong>{result.passes}</strong>
-          </div>
-          <div>
-            <span>{result.game === 'klondike' ? 'Draw' : 'Home'}</span>
-            <strong>{result.game === 'klondike' ? result.draw : '52/52'}</strong>
-          </div>
-        </div>
-
-        <div className="result-stats">
-          <div className="result-stats-head sudoku-stats-head">
-            <span>Moved by</span>
-            <span>Moves</span>
-            <span />
-          </div>
-          {result.stats.map((stat, index) => (
-            <div className="result-row sudoku-result-row" key={stat.playerId}>
-              <span className="result-player">
-                <Avatar avatar={stat.avatar} color={stat.color} size={32} />
-                <span className="result-name">
-                  {stat.name}
-                  {stat.playerId === you.id && <em>you</em>}
-                  {index === 0 && result.stats.length > 1 && (
-                    <span className="result-badge">most moves</span>
-                  )}
-                </span>
-              </span>
-              <span className="result-flag">{stat.moves}</span>
-              <span className="result-mine" />
-            </div>
-          ))}
-        </div>
-
-        <LobbyReturn
-          room={room}
-          connected={connected}
-          serverOffset={serverOffset}
-          isHost={isHost}
-          onLobby={onLobby}
-        />
-
-        <div className="results-actions">
-          <button className="button button-secondary" onClick={() => void copy()}>
-            {copied ? <IconCheck size={17} /> : <IconCopy size={17} />}
-            {copied ? 'Copied' : 'Copy result'}
-          </button>
-          {room.solitaire && (
-            <button className="button button-ghost" onClick={() => setShowBoard(true)}>
-              <IconEye size={17} /> See the table
-            </button>
-          )}
-        </div>
-
-        <div className="results-foot">
-          <span>
-            Room <strong>{room.code}</strong> stays open. Pick the next game together.
-          </span>
-          <span className="results-foot-actions">
-            <button className="text-button" onClick={onInvite}>
-              <IconShare size={14} /> Invite someone
-            </button>
-            <button className="text-button" onClick={onLeave}>
-              Leave
-            </button>
-          </span>
-        </div>
-      </div>
-
-      {room.solitaire && (
-        <Modal
-          open={showBoard}
-          onClose={() => setShowBoard(false)}
-          title="Final table"
-          wide
-        >
-          <div className="solitaire-final">
-            <SolitaireBoard
-              solitaire={room.solitaire}
-              selected={null}
-              disabled
-              onSelect={() => undefined}
-              onMove={() => undefined}
-              onDraw={() => undefined}
-              onRecycle={() => undefined}
-              onAuto={() => undefined}
-            />
-          </div>
+      {view.hasBoard && (
+        <Modal open={showBoard} onClose={() => setShowBoard(false)} title={view.boardTitle} wide>
+          {view.board}
         </Modal>
       )}
     </div>
   );
 }
 
-function sudokuResultText(result: SudokuResult): string {
-  const difficulty = SUDOKU_DIFFICULTIES[result.difficulty].label;
-  const players = result.stats
-    .map((stat) => `${stat.avatar} ${stat.name} ${stat.correct}`)
-    .join(' · ');
-  return `🧩 Sudoku ${difficulty} — solved\n🕒 ${formatClock(result.durationMs / 1000)} · ${result.stats.length} players\n${players}`;
-}
+export function Results({ room, you, connected, serverOffset, onLobby, onInvite, onLeave }: ResultsProps) {
+  const result = room.lastResult;
 
-function SudokuResults({
-  room,
-  you,
-  connected,
-  serverOffset,
-  result,
-  onLobby,
-  onInvite,
-  onLeave
-}: ResultsProps & { result: SudokuResult }) {
-  const [copied, setCopied] = useState(false);
-  const [showBoard, setShowBoard] = useState(false);
-  const isHost = room.hostId === you.id;
-  const players = useMemo(
-    () => new Map(room.players.map((player) => [player.id, player])) as Map<string, PublicPlayer>,
-    [room.players]
-  );
-  const entries = useMemo(() => {
-    const map = new Map<number, SudokuEntryView>();
-    for (const entry of result.entries) {
-      map.set(entry.i, { digit: entry.digit, by: entry.by, wrong: entry.wrong });
+  const view = useMemo<ResultView | null>(() => {
+    if (!result) return null;
+    if (result.game === 'sudoku') return sudokuView(result, room, you);
+    if (result.game === 'klondike' || result.game === 'freecell') {
+      return solitaireView(result, room, you);
     }
-    return map;
-  }, [result.entries]);
-  const totalMistakes = result.stats.reduce((sum, stat) => sum + stat.wrong, 0);
-  const copy = async () => {
-    const ok = await copyText(sudokuResultText(result));
-    if (ok) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2200);
-    }
-  };
+    if (result.game === 'mahjong') return mahjongView(result, room, you);
+    if (result.game === 'minesweeper') return minesweeperView(result, room, you);
+    return null;
+  }, [result, room, you]);
 
-  return (
-    <div className="results results-won">
-      <Confetti />
-      <div className="results-card">
-        <div className="results-hero">
-          <span className="results-icon">
-            <IconSudoku size={30} />
-          </span>
-          <span className="eyebrow">Sudoku solved</span>
-          <h1>Grid complete.</h1>
-          <p className="results-lede">
-            {SUDOKU_DIFFICULTIES[result.difficulty].label} · {formatClock(result.durationMs / 1000)} ·{' '}
-            {result.stats.length} {plural(result.stats.length, 'player', 'players')} at the table.
-          </p>
-        </div>
-
-        <div className="result-metrics">
-          <div>
-            <span>Time</span>
-            <strong>{formatClock(result.durationMs / 1000)}</strong>
-          </div>
-          <div>
-            <span>Difficulty</span>
-            <strong>{SUDOKU_DIFFICULTIES[result.difficulty].label}</strong>
-          </div>
-          <div>
-            <span>Filled</span>
-            <strong>81/81</strong>
-          </div>
-          <div>
-            <span>Mistakes</span>
-            <strong>{totalMistakes}</strong>
-          </div>
-        </div>
-
-        <div className="result-stats">
-          <div className="result-stats-head sudoku-stats-head">
-            <span>Filled by</span>
-            <span>Correct</span>
-            <span>Mistakes</span>
-          </div>
-          {result.stats.map((stat, index) => (
-            <div className="result-row sudoku-result-row" key={stat.playerId}>
-              <span className="result-player">
-                <Avatar avatar={stat.avatar} color={stat.color} size={32} />
-                <span className="result-name">
-                  {stat.name}
-                  {stat.playerId === you.id && <em>you</em>}
-                  {index === 0 && result.stats.length > 1 && (
-                    <span className="result-badge">most filled</span>
-                  )}
-                </span>
-              </span>
-              <span className="result-flag">{stat.correct}</span>
-              <span className="result-mine">{stat.wrong}</span>
-            </div>
-          ))}
-        </div>
-
-        <LobbyReturn
-          room={room}
-          connected={connected}
-          serverOffset={serverOffset}
-          isHost={isHost}
-          onLobby={onLobby}
-        />
-
-        <div className="results-actions">
-          <button className="button button-secondary" onClick={() => void copy()}>
-            {copied ? <IconCheck size={17} /> : <IconCopy size={17} />}
-            {copied ? 'Copied' : 'Copy result'}
-          </button>
-          <button className="button button-ghost" onClick={() => setShowBoard(true)}>
-            <IconEye size={17} /> See the grid
-          </button>
-        </div>
-
-        <div className="results-foot">
-          <span>
-            Room <strong>{room.code}</strong> stays open. Pick the next game together.
-          </span>
-          <span className="results-foot-actions">
-            <button className="text-button" onClick={onInvite}>
-              <IconShare size={14} /> Invite someone
-            </button>
-            <button className="text-button" onClick={onLeave}>
-              Leave
-            </button>
-          </span>
+  if (!result || !view) {
+    return (
+      <div className="results">
+        <div className="results-card">
+          <span className="eyebrow">Results</span>
+          <h1>Waiting for the board…</h1>
+          <p className="results-lede">The final score will land here.</p>
         </div>
       </div>
+    );
+  }
 
-      <Modal open={showBoard} onClose={() => setShowBoard(false)} title="Solved grid" wide>
-        <div className="sudoku-final-board">
-          <SudokuBoard
-            givens={result.givens}
-            entries={entries}
-            players={players}
-            selected={null}
-          />
-        </div>
-      </Modal>
-    </div>
+  return (
+    <ResultsCard
+      room={room}
+      you={you}
+      connected={connected}
+      serverOffset={serverOffset}
+      view={view}
+      onLobby={onLobby}
+      onInvite={onInvite}
+      onLeave={onLeave}
+    />
   );
 }

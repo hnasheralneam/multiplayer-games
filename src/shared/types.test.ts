@@ -72,10 +72,24 @@ describe('protocol', () => {
           maxPlayers: 8,
           lateJoin: true,
           sudokuDifficulty: 'medium',
-          klondikeDraw: 3
+          klondikeDraw: 3,
+          mahjongLayout: 'turtle'
         })
       )
     ).toMatchObject({ t: 'settings', game: 'klondike', klondikeDraw: 3 });
+    expect(
+      parseClientMessage(
+        JSON.stringify({
+          t: 'mahjong',
+          action: 'match',
+          a: 3,
+          b: 140
+        })
+      )
+    ).toMatchObject({ t: 'mahjong', action: 'match', a: 3, b: 140 });
+    expect(
+      parseClientMessage(JSON.stringify({ t: 'mahjong', action: 'match', a: 999, b: 0 }))
+    ).toBeNull();
     expect(
       parseClientMessage(JSON.stringify({ t: 'solitaire', action: 'move', card: 99, to: { zone: 'tableau', index: 0 } }))
     ).toBeNull();

@@ -3,13 +3,12 @@
 (() => {
   try {
     const saved = localStorage.getItem('ms:theme');
-    const light = saved ? saved === 'light' : window.matchMedia('(prefers-color-scheme: light)').matches;
-    const theme = light ? 'light' : 'dark';
+    const theme = saved === 'dark' ? 'dark' : 'light';
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
     const meta = document.getElementById('theme-color');
-    if (meta) meta.setAttribute('content', light ? '#f4f0e8' : '#0b0e13');
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#f7f6f3' : '#131417');
   } catch {
-    document.documentElement.dataset.theme = 'dark';
+    document.documentElement.dataset.theme = 'light';
   }
 })();

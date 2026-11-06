@@ -3,17 +3,13 @@ import { useSyncExternalStore } from 'react';
 export type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'ms:theme';
+const DEFAULT_THEME: Theme = 'light';
 const THEME_COLORS: Record<Theme, string> = {
-  dark: '#0b0e13',
-  light: '#f4f0e8'
+  dark: '#131417',
+  light: '#f7f6f3'
 };
 
 const listeners = new Set<() => void>();
-
-function systemTheme(): Theme {
-  if (typeof window === 'undefined' || !window.matchMedia) return 'dark';
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
 
 export function storedTheme(): Theme | null {
   try {
@@ -27,7 +23,7 @@ export function storedTheme(): Theme | null {
 export function currentTheme(): Theme {
   const attr = document.documentElement.dataset.theme;
   if (attr === 'light' || attr === 'dark') return attr;
-  return storedTheme() ?? systemTheme();
+  return storedTheme() ?? DEFAULT_THEME;
 }
 
 export function applyTheme(theme: Theme, persist = false): void {
@@ -56,19 +52,11 @@ export function toggleTheme(): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-
-  const media = window.matchMedia?.('(prefers-color-scheme: light)');
-  const onSystemChange = () => {
-    if (!storedTheme()) applyTheme(systemTheme());
-  };
-  media?.addEventListener('change', onSystemChange);
-
   return () => {
     listeners.delete(listener);
-    media?.removeEventListener('change', onSystemChange);
   };
 }
 
 export function useTheme(): Theme {
-  return useSyncExternalStore(subscribe, currentTheme, () => 'dark' as const);
+  return useSyncExternalStore(subscribe, currentTheme, () => DEFAULT_THEME);
 }

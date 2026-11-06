@@ -1,6 +1,6 @@
 const DEFAULT_TITLE = 'Games, together';
 const DEFAULT_DESCRIPTION =
-  'One room, one link. Minesweeper, Sudoku, Klondike, FreeCell, and the people around you. No signup, no chat.';
+  'One room, one link. Minesweeper, Sudoku, Klondike, FreeCell, Mahjongg, and the people around you. No signup, no chat.';
 
 function escapeHtml(value: string): string {
   return value

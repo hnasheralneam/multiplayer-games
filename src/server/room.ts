@@ -17,9 +17,12 @@ import {
   type GameKind,
   type GameResult,
   type JoinMessage,
+  type MahjongPlayerStats,
+  type MahjongResult,
   type PlayerStats,
   type PublicCell,
   type PublicFlag,
+  type PublicMahjong,
   type PublicRoom,
   type PublicRound,
   type PublicSolitaire,
@@ -37,6 +40,7 @@ import {
   type You
 } from '../shared/types';
 import { randomName } from '../shared/names';
+import { isMahjongLayout } from '../shared/mahjong';
 import {
   neighbors,
   placeMines,
@@ -47,6 +51,7 @@ import {
 import { generateSudoku, isSudokuSolved } from './sudoku';
 import {
   autoMove,
+  autoPlaySafe,
   dealSolitaire,
   drawStock,
   playMove,
@@ -54,6 +59,13 @@ import {
   solitaireWon,
   type SolitaireState
 } from './solitaire';
+import {
+  dealMahjong,
+  mahjongWon,
+  playMatch,
+  shuffleRemaining,
+  type MahjongState
+} from './mahjong';
 
 const HOST_MIGRATION_MS = 60_000;
 const LOBBY_SEAT_TTL_MS = 90_000;
@@ -110,6 +122,15 @@ interface SolitaireRound {
   stats: Map<string, number>;
 }
 
+interface MahjongRound {
+  id: string;
+  startedAt: number;
+  endedAt?: number;
+  state: MahjongState;
+  moves: number;
+  stats: Map<string, number>;
+}
+
 interface Round {
   id: string;
   seed: number;
@@ -147,7 +168,8 @@ export function defaultSettings(): RoomSettings {
     maxPlayers: 8,
     lateJoin: true,
     sudokuDifficulty: 'medium',
-    klondikeDraw: 1
+    klondikeDraw: 1,
+    mahjongLayout: 'turtle'
   };
 }
 
@@ -173,6 +195,7 @@ export class Room {
   round: Round | null = null;
   sudoku: SudokuRound | null = null;
   solitaire: SolitaireRound | null = null;
+  mahjong: MahjongRound | null = null;
   lastResult: GameResult | null = null;
   countdownEndsAt?: number;
   resultsEndsAt?: number;
@@ -286,16 +309,28 @@ export class Room {
         endedAt: this.solitaire.endedAt,
         variant: state.variant,
         draw: state.draw,
+        stock: [...state.stock],
         stockCount: state.stock.length,
         waste: [...state.waste],
         foundations: state.foundations.map((pile) => [...pile]),
-        tableau: state.tableau.map((column, index) =>
-          column.map((card, position) => (position < state.faceDown[index] ? -1 : card))
-        ),
+        tableau: state.tableau.map((column) => [...column]),
         faceDown: [...state.faceDown],
         freeCells: [...state.freeCells],
         passes: state.passes,
         moves: this.solitaire.moves
+      };
+    }
+
+    let mahjong: PublicMahjong | undefined;
+    if (this.mahjong) {
+      mahjong = {
+        id: this.mahjong.id,
+        startedAt: this.mahjong.startedAt,
+        endedAt: this.mahjong.endedAt,
+        layout: this.mahjong.state.layout,
+        tiles: [...this.mahjong.state.tiles],
+        moves: this.mahjong.moves,
+        shuffles: this.mahjong.state.shuffles
       };
     }
 
@@ -315,6 +350,7 @@ export class Room {
       round,
       sudoku,
       solitaire,
+      mahjong,
       lastResult: this.lastResult ?? undefined
     };
   }
@@ -492,6 +528,8 @@ export class Room {
       this.sudoku.stats.set(player.id, { correct: 0, wrong: 0 });
     } else if (this.solitaire && this.status === 'playing') {
       this.solitaire.stats.set(player.id, 0);
+    } else if (this.mahjong && this.status === 'playing') {
+      this.mahjong.stats.set(player.id, 0);
     }
 
     this.resumeIfPaused();
@@ -556,6 +594,9 @@ export class Room {
       case 'solitaire':
         this.handleSolitaireAction(client, message);
         break;
+      case 'mahjong':
+        this.handleMahjongAction(client, message);
+        break;
       case 'lobby':
         this.handleReturnLobby(client);
         break;
@@ -610,6 +651,10 @@ export class Room {
       this.error(client, 'bad_message', 'That Klondike draw is not supported.');
       return;
     }
+    if (!isMahjongLayout(message.mahjongLayout)) {
+      this.error(client, 'bad_message', 'That Mahjongg layout is not supported.');
+      return;
+    }
     const preset = PRESETS[message.preset];
     if (!preset) {
       this.error(client, 'bad_message', 'That board does not exist.');
@@ -625,7 +670,8 @@ export class Room {
       maxPlayers: Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, message.maxPlayers)),
       lateJoin: message.lateJoin,
       sudokuDifficulty: message.sudokuDifficulty,
-      klondikeDraw: message.klondikeDraw
+      klondikeDraw: message.klondikeDraw,
+      mahjongLayout: message.mahjongLayout
     };
     this.touch();
     this.broadcastRoom();
@@ -696,6 +742,18 @@ export class Room {
       };
       this.round = null;
       this.sudoku = null;
+      this.mahjong = null;
+    } else if (this.settings.game === 'mahjong') {
+      this.mahjong = {
+        id: randomUUID(),
+        startedAt: now,
+        state: dealMahjong(this.settings.mahjongLayout, randomInt(0, 2 ** 31 - 1)),
+        moves: 0,
+        stats: new Map([...this.players.keys()].map((id) => [id, 0] as const))
+      };
+      this.round = null;
+      this.sudoku = null;
+      this.solitaire = null;
     } else {
       const { width, height, mines, lives } = this.settings;
       this.round = {
@@ -717,6 +775,7 @@ export class Room {
       };
       this.sudoku = null;
       this.solitaire = null;
+      this.mahjong = null;
     }
     this.status = 'playing';
     this.lastResult = null;
@@ -741,7 +800,7 @@ export class Room {
 
   private resumeIfPaused(): void {
     if (!this.pausedAt || this.status !== 'playing') return;
-    const active = this.round ?? this.sudoku ?? this.solitaire;
+    const active = this.round ?? this.sudoku ?? this.solitaire ?? this.mahjong;
     if (!active) return;
     const now = Date.now();
     active.startedAt += Math.max(0, now - this.pausedAt);
@@ -951,6 +1010,7 @@ export class Room {
     this.status = 'results';
     this.sudoku = null;
     this.solitaire = null;
+    this.mahjong = null;
     this.lastResult = {
       game: 'minesweeper',
       result,
@@ -1018,6 +1078,7 @@ export class Room {
     this.status = 'results';
     this.round = null;
     this.solitaire = null;
+    this.mahjong = null;
     this.pausedAt = undefined;
     this.resumeAt = undefined;
     this.countdownEndsAt = undefined;
@@ -1095,6 +1156,7 @@ export class Room {
     }
     if (!applied) return;
 
+    autoPlaySafe(solitaire.state);
     solitaire.moves += 1;
     solitaire.stats.set(player.id, (solitaire.stats.get(player.id) ?? 0) + 1);
     this.touch();
@@ -1144,6 +1206,80 @@ export class Room {
     this.broadcastRoom();
   }
 
+  private handleMahjongAction(
+    client: Client,
+    message: Extract<ClientMessage, { t: 'mahjong' }>
+  ): void {
+    const player = this.playerFor(client);
+    const mahjong =
+      this.status === 'playing' && this.settings.game === 'mahjong' ? this.mahjong : null;
+    if (!player || !mahjong) return;
+    const now = Date.now();
+    if (this.resumeAt && now < this.resumeAt) return;
+    if (now - player.lastActionAt < SUDOKU_ACTION_COOLDOWN_MS) return;
+    player.lastActionAt = now;
+
+    const state = mahjong.state;
+    if (message.action === 'shuffle') {
+      // The server only allows a shuffle when the table is out of matches.
+      if (!shuffleRemaining(state, randomInt(0, 2 ** 31 - 1))) return;
+      this.touch();
+      this.broadcastRoom();
+      return;
+    }
+
+    if (message.a === undefined || message.b === undefined) return;
+    if (!playMatch(state, message.a, message.b)) return;
+
+    mahjong.moves += 1;
+    mahjong.stats.set(player.id, (mahjong.stats.get(player.id) ?? 0) + 1);
+    this.touch();
+
+    if (mahjongWon(state)) {
+      this.endMahjong();
+      return;
+    }
+    this.broadcastRoom();
+  }
+
+  private endMahjong(): void {
+    const mahjong = this.mahjong;
+    if (!mahjong || this.status !== 'playing') return;
+    const now = Date.now();
+    mahjong.endedAt = now;
+    this.status = 'results';
+    this.round = null;
+    this.sudoku = null;
+    this.solitaire = null;
+    this.pausedAt = undefined;
+    this.resumeAt = undefined;
+    this.countdownEndsAt = undefined;
+
+    const stats: MahjongPlayerStats[] = this.sortedPlayers()
+      .map((player) => ({
+        playerId: player.id,
+        name: player.name,
+        avatar: player.avatar,
+        color: player.color,
+        matches: mahjong.stats.get(player.id) ?? 0
+      }))
+      .sort((a, b) => b.matches - a.matches);
+
+    this.lastResult = {
+      game: 'mahjong',
+      result: 'won',
+      endedAt: now,
+      durationMs: now - mahjong.startedAt,
+      layout: mahjong.state.layout,
+      moves: mahjong.moves,
+      shuffles: mahjong.state.shuffles,
+      stats
+    } satisfies MahjongResult;
+    this.scheduleResultsReturn();
+    this.touch();
+    this.broadcastRoom();
+  }
+
   private scheduleResultsReturn(): void {
     if (this.resultsTimer) clearTimeout(this.resultsTimer);
     this.resultsEndsAt = Date.now() + RESULTS_RETURN_MS;
@@ -1174,6 +1310,7 @@ export class Room {
     this.round = null;
     this.sudoku = null;
     this.solitaire = null;
+    this.mahjong = null;
     if (!keepResult) this.lastResult = null;
     this.status = 'lobby';
     this.touch();
@@ -1250,6 +1387,7 @@ export class Room {
       this.round = null;
       this.sudoku = null;
       this.solitaire = null;
+      this.mahjong = null;
       this.lastResult = null;
       this.pausedAt = undefined;
       this.resumeAt = undefined;
@@ -1376,6 +1514,7 @@ export class Room {
         this.round = null;
         this.sudoku = null;
         this.solitaire = null;
+        this.mahjong = null;
         this.lastResult = null;
         this.pausedAt = undefined;
         this.resumeAt = undefined;

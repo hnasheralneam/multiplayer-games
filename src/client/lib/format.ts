@@ -1,3 +1,10 @@
+export function statusLabel(status: 'lobby' | 'countdown' | 'playing' | 'results'): string {
+  if (status === 'playing') return 'Live';
+  if (status === 'countdown') return 'Starting';
+  if (status === 'results') return 'Results';
+  return 'Lobby';
+}
+
 export function formatClock(totalSeconds: number): string {
   const safe = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(safe / 3600);

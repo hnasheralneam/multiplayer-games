@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { GAME_META, isSolitaireVariant, type PublicRoom, type You } from '../../shared/types';
+import { MAHJONG_LAYOUTS, mahjongTileTotal } from '../../shared/mahjong';
 import { Avatar, useNow } from './ui';
 import { IconCrown, IconFlag, IconSudoku } from './icons';
 import { GameIcon } from './GameIcon';
@@ -7,11 +8,13 @@ import { GameIcon } from './GameIcon';
 export function Countdown({
   room,
   you,
-  serverOffset
+  serverOffset,
+  onCancel
 }: {
   room: PublicRoom;
   you: You;
   serverOffset: number;
+  onCancel?: () => void;
 }) {
   const now = useNow(120);
   const serverNow = now + serverOffset;
@@ -23,13 +26,23 @@ export function Countdown({
     room.settings.preset === 'cozy' ? 'Cozy' : room.settings.preset === 'big' ? 'Big' : 'Classic';
   const sudoku = room.settings.game === 'sudoku';
   const solitaire = isSolitaireVariant(room.settings.game);
-  const ghostCols = sudoku ? 9 : solitaire ? (room.settings.game === 'freecell' ? 8 : 7) : room.settings.width;
-  const ghostRows = sudoku ? 9 : solitaire ? 4 : room.settings.height;
+  const mahjong = room.settings.game === 'mahjong';
+  const mahjongLayout = MAHJONG_LAYOUTS[room.settings.mahjongLayout];
+  const ghostCols = sudoku
+    ? 9
+    : solitaire
+      ? (room.settings.game === 'freecell' ? 8 : 7)
+      : mahjong
+        ? 12
+        : room.settings.width;
+  const ghostRows = sudoku ? 9 : solitaire ? 4 : mahjong ? 8 : room.settings.height;
   const ghostCount = sudoku
     ? 81
     : solitaire
       ? ghostCols * ghostRows
-      : Math.min(room.settings.width * room.settings.height, 480);
+      : mahjong
+        ? Math.min(mahjongTileTotal(room.settings.mahjongLayout), 96)
+        : Math.min(room.settings.width * room.settings.height, 480);
   const sudokuLabel =
     room.settings.sudokuDifficulty === 'easy'
       ? 'Easy'
@@ -70,7 +83,9 @@ export function Countdown({
               ? `Sudoku · ${sudokuLabel} · one shared 9×9`
               : solitaire
                 ? `${GAME_META[room.settings.game].label} · one shared table${room.settings.game === 'klondike' ? ` · draw ${room.settings.klondikeDraw}` : ' · all cards face up'}`
-                : `${presetLabel} · ${room.settings.width}×${room.settings.height} · ${room.settings.lives} shared ${room.settings.lives === 1 ? 'life' : 'lives'}`}
+                : mahjong
+                  ? `Mahjongg · ${mahjongLayout.label} · ${mahjongTileTotal(room.settings.mahjongLayout)} tiles`
+                  : `${presetLabel} · ${room.settings.width}×${room.settings.height} · ${room.settings.lives} shared ${room.settings.lives === 1 ? 'life' : 'lives'}`}
           </span>
           <div className="countdown-players">
             {room.players.map((player) => (
@@ -97,6 +112,13 @@ export function Countdown({
                 </span>
                 <span>Double-tap sends it home</span>
               </>
+            ) : mahjong ? (
+              <>
+                <span>
+                  <GameIcon game="mahjong" size={16} /> Tap two matching free tiles
+                </span>
+                <span>Edge tiles only — clear it together</span>
+              </>
             ) : (
               <>
                 <span>
@@ -106,6 +128,11 @@ export function Countdown({
               </>
             )}
           </div>
+          {onCancel && host?.id === you.id && (
+            <button type="button" className="countdown-cancel" onClick={onCancel}>
+              Cancel and go back
+            </button>
+          )}
         </div>
       </div>
     </div>

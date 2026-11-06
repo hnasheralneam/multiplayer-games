@@ -1,3 +1,7 @@
+import type { MahjongLayout } from './mahjong';
+
+export type { MahjongLayout };
+
 export const CODE_ALPHABET = '23456789BCDFGHJKMNPQRSTVWXYZ';
 export const CODE_LENGTH = 4;
 
@@ -30,7 +34,7 @@ export const LIVES_OPTIONS = [1, 2, 3, 5] as const;
 export const SOLITAIRE_VARIANTS = ['klondike', 'freecell'] as const;
 export type SolitaireVariant = (typeof SOLITAIRE_VARIANTS)[number];
 
-export const GAME_KINDS = ['minesweeper', 'sudoku', 'klondike', 'freecell'] as const;
+export const GAME_KINDS = ['minesweeper', 'sudoku', 'klondike', 'freecell', 'mahjong'] as const;
 export type GameKind = (typeof GAME_KINDS)[number];
 
 export const GAME_META: Record<
@@ -59,6 +63,12 @@ export const GAME_META: Record<
     label: 'FreeCell',
     kicker: 'Solitaire',
     blurb: 'Every card is face up and four cells are free. Plan the whole board.',
+    solo: true
+  },
+  mahjong: {
+    label: 'Mahjongg',
+    kicker: 'Solitaire',
+    blurb: 'One shared stack of tiles. Match free pairs and clear the board together.',
     solo: true
   }
 };
@@ -193,6 +203,7 @@ export interface RoomSettings {
   lateJoin: boolean;
   sudokuDifficulty: SudokuDifficulty;
   klondikeDraw: KlondikeDraw;
+  mahjongLayout: MahjongLayout;
 }
 
 export type RoomStatus = 'lobby' | 'countdown' | 'playing' | 'results';
@@ -297,6 +308,7 @@ export interface PublicSolitaire {
   endedAt?: number;
   variant: SolitaireVariant;
   draw: KlondikeDraw;
+  stock: number[];
   stockCount: number;
   waste: number[];
   foundations: number[][];
@@ -327,7 +339,37 @@ export interface SolitaireResult {
   stats: SolitairePlayerStats[];
 }
 
-export type GameResult = RoundResult | SudokuResult | SolitaireResult;
+export interface PublicMahjong {
+  id: string;
+  startedAt: number;
+  endedAt?: number;
+  layout: MahjongLayout;
+  /** One entry per layout position: tile type id, or -1 once removed. */
+  tiles: number[];
+  moves: number;
+  shuffles: number;
+}
+
+export interface MahjongPlayerStats {
+  playerId: string;
+  name: string;
+  avatar: Avatar;
+  color: string;
+  matches: number;
+}
+
+export interface MahjongResult {
+  game: 'mahjong';
+  result: 'won';
+  endedAt: number;
+  durationMs: number;
+  layout: MahjongLayout;
+  moves: number;
+  shuffles: number;
+  stats: MahjongPlayerStats[];
+}
+
+export type GameResult = RoundResult | SudokuResult | SolitaireResult | MahjongResult;
 
 export interface PublicRoom {
   code: string;
@@ -345,6 +387,7 @@ export interface PublicRoom {
   round?: PublicRound;
   sudoku?: PublicSudoku;
   solitaire?: PublicSolitaire;
+  mahjong?: PublicMahjong;
   lastResult?: GameResult;
 }
 
@@ -396,6 +439,7 @@ export interface SettingsMessage {
   lateJoin: boolean;
   sudokuDifficulty: SudokuDifficulty;
   klondikeDraw: KlondikeDraw;
+  mahjongLayout: MahjongLayout;
 }
 
 export interface StartMessage {
@@ -444,6 +488,14 @@ export interface SolitaireMessage {
   to?: SolitaireSlot;
 }
 
+export interface MahjongMessage {
+  t: 'mahjong';
+  action: 'match' | 'shuffle';
+  /** Position indexes into the layout's tile list. */
+  a?: number;
+  b?: number;
+}
+
 export interface ReturnLobbyMessage {
   t: 'lobby';
 }
@@ -461,6 +513,7 @@ export type ClientMessage =
   | CloseRoomMessage
   | SudokuEntryMessage
   | SolitaireMessage
+  | MahjongMessage
   | ReturnLobbyMessage;
 
 export interface WelcomeMessage {

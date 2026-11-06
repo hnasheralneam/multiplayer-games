@@ -9,6 +9,7 @@ export interface SudokuEntryView {
 interface SudokuBoardProps {
   givens: number[];
   entries: Map<number, SudokuEntryView>;
+  notes?: Map<number, Set<number>>;
   players: Map<string, PublicPlayer>;
   selected: number | null;
   onSelect?: (i: number) => void;
@@ -30,6 +31,7 @@ function boxOf(i: number): number {
 export function SudokuBoard({
   givens,
   entries,
+  notes,
   players,
   selected,
   onSelect,
@@ -44,6 +46,7 @@ export function SudokuBoard({
         const given = givens[i] ?? 0;
         const entry = entries.get(i);
         const digit = given || entry?.digit || 0;
+        const marks = digit ? [] : [...(notes?.get(i) ?? [])].sort((a, b) => a - b);
         const wrong = Boolean(entry?.wrong);
         const owner = entry ? players.get(entry.by) : undefined;
         const selectedCell = selected === i;
@@ -68,6 +71,11 @@ export function SudokuBoard({
         ]
           .filter(Boolean)
           .join(' ');
+        const label = digit
+          ? `Row ${rowOf(i) + 1}, column ${colOf(i) + 1}, ${digit}${wrong ? ', wrong' : given ? ', given' : ''}`
+          : marks.length
+            ? `Row ${rowOf(i) + 1}, column ${colOf(i) + 1}, notes ${marks.join(' ')}`
+            : `Row ${rowOf(i) + 1}, column ${colOf(i) + 1}, empty`;
 
         return (
           <button
@@ -75,13 +83,21 @@ export function SudokuBoard({
             type="button"
             role="gridcell"
             className={classes}
-            aria-label={`Row ${rowOf(i) + 1}, column ${colOf(i) + 1}${digit ? `, ${digit}${wrong ? ', wrong' : given ? ', given' : ''}` : ', empty'}`}
+            aria-label={label}
             aria-selected={selectedCell}
             tabIndex={selected === null ? (i === 0 ? 0 : -1) : selectedCell ? 0 : -1}
             disabled={!onSelect}
             onClick={() => onSelect?.(i)}
           >
-            {digit ? <span>{digit}</span> : null}
+            {digit ? (
+              <span>{digit}</span>
+            ) : marks.length ? (
+              <span className="sudoku-notes" aria-hidden="true">
+                {Array.from({ length: 9 }, (_, n) => (
+                  <i key={n}>{marks.includes(n + 1) ? n + 1 : ''}</i>
+                ))}
+              </span>
+            ) : null}
             {owner && !given ? (
               <i className="sudoku-owner" style={{ background: owner.color }} aria-hidden="true" />
             ) : null}

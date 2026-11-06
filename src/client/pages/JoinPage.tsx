@@ -31,7 +31,7 @@ export function JoinPage() {
   };
 
   return (
-    <div className="site site-narrow">
+    <div className="site">
       <header className="site-header">
         <Logo />
         <nav className="site-nav">
@@ -41,7 +41,7 @@ export function JoinPage() {
       </header>
 
       <main className="join-page">
-        <div className="join-card join-card-page">
+        <div className="join-card">
           <span className="eyebrow">
             <IconUsers size={14} /> Two to eight players
           </span>

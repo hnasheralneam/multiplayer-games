@@ -136,20 +136,9 @@ export function InvitePanel({ room }: { room: PublicRoom }) {
 
   return (
     <section className="invite-panel" aria-label="Invite players">
-      <div className="invite-head">
-        <div>
-          <span className="eyebrow">Invite your crew</span>
-          <h2>{full ? 'The table is full.' : 'Scan, say it, or send it.'}</h2>
-        </div>
-        <span className="invite-count">
-          {room.players.length}/{room.settings.maxPlayers} in
-        </span>
-      </div>
-
       <div className="invite-body">
         <div className="invite-qr">
           <QRCodeImage text={url} size={142} />
-          <span className="invite-qr-label">Point a camera</span>
         </div>
 
         <div className="invite-info">
@@ -158,14 +147,13 @@ export function InvitePanel({ room }: { room: PublicRoom }) {
               className="invite-code"
               onClick={() => void copy(room.code, 'code')}
               aria-label={`Copy room code ${room.code}`}
+              title="Copy the code"
             >
               {room.code.split('').map((character, index) => (
                 <span key={index}>{character}</span>
               ))}
             </button>
-            <span className="invite-code-hint">
-              {copied === 'code' ? 'Code copied' : 'Say it out loud'}
-            </span>
+            {copied === 'code' && <span className="invite-note">Code copied</span>}
           </div>
 
           <div className="invite-link-row">
@@ -194,11 +182,9 @@ export function InvitePanel({ room }: { room: PublicRoom }) {
             )}
           </div>
 
-          <p className="invite-note">
-            {full
-              ? 'Every seat is taken. The link starts working again if one opens.'
-              : `Anyone with the code can join. ${isLan ? 'This one is on your local Wi-Fi only.' : 'The code stays the same next round.'}`}
-          </p>
+          {full && (
+            <p className="invite-note">Every seat is taken — the link revives if one opens.</p>
+          )}
         </div>
       </div>
 

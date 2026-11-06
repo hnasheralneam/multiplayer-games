@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { GAME_META, type PublicRoom, type SolitaireSlot, type You } from '../../shared/types';
-import { formatClock } from '../lib/format';
-import { useNow } from './ui';
-import { IconClock } from './icons';
+import { GameHud, HudEndGame, HudMode, HudTimer } from './GameHud';
+import { StatusPill, useNow } from './ui';
 import { GameIcon } from './GameIcon';
 import { PlayerStrip } from './PlayerStrip';
+import { useSolitaireSolver } from '../lib/useSolitaireSolver';
 import { SolitaireBoard } from './SolitaireBoard';
 
 export interface SolitaireGameProps {
@@ -16,6 +16,7 @@ export interface SolitaireGameProps {
   onRecycle: () => void;
   onMove: (card: number, to: SolitaireSlot) => void;
   onAuto: (card: number) => void;
+  onEndGame?: () => void;
 }
 
 function cardsHome(foundations: number[][]): number {
@@ -30,7 +31,8 @@ export function SolitaireGame({
   onDraw,
   onRecycle,
   onMove,
-  onAuto
+  onAuto,
+  onEndGame
 }: SolitaireGameProps) {
   const solitaire = room.solitaire;
   const now = useNow(200);
@@ -51,6 +53,8 @@ export function SolitaireGame({
     if (!present) setSelected(null);
   }, [solitaire, selected]);
 
+  const solverStatus = useSolitaireSolver(solitaire, room.status === 'playing');
+
   if (!solitaire) return null;  const meta = GAME_META[solitaire.variant];
   const resuming = Boolean(room.resumeAt && serverNow < room.resumeAt);
   const canPlay =
@@ -65,28 +69,35 @@ export function SolitaireGame({
 
   return (
     <section className={`solitaire-game ${final ? 'solitaire-game-final' : ''}`} aria-label={meta.label}>
-      <div className="game-hud solitaire-hud">
-        <div className="hud-left">
-          {paused && <span className="live-pill">PAUSED</span>}
-          <span className="hud-timer">
-            <IconClock size={15} />
-            <strong>{formatClock(elapsed / 1000)}</strong>
+      <GameHud
+        left={
+          <>
+            {paused && <span className="live-pill">PAUSED</span>}
+            <HudTimer seconds={elapsed / 1000} />
+            <HudMode icon={<GameIcon game={solitaire.variant} size={14} />}>
+              {meta.label}
+              {solitaire.variant === 'klondike' && ` · draw ${solitaire.draw}`}
+            </HudMode>
+          </>
+        }
+        center={
+          <span className="hud-progress" aria-live="polite">
+            <strong>{home}</strong>
+            <span>/ 52 home</span>
+            {solitaire.moves > 0 && <em>{solitaire.moves} moves</em>}
           </span>
-          <span className="solitaire-mode">
-            <GameIcon game={solitaire.variant} size={14} />
-            {meta.label.toUpperCase()}
-            {solitaire.variant === 'klondike' && ` · DRAW ${solitaire.draw}`}
-          </span>
-        </div>
-        <div className="solitaire-progress" aria-live="polite">
-          <strong>{home}</strong>
-          <span>/ 52 home</span>
-          {solitaire.moves > 0 && <em>{solitaire.moves} moves</em>}
-        </div>
-        <div className="hud-right">
-          <span>{solitaire.passes > 0 ? `${solitaire.passes} pass${solitaire.passes === 1 ? '' : 'es'}` : 'Unlimited passes'}</span>
-        </div>
-      </div>
+        }
+        right={
+          <>
+            <span>
+              {solitaire.passes > 0
+                ? `${solitaire.passes} pass${solitaire.passes === 1 ? '' : 'es'}`
+                : 'Unlimited passes'}
+            </span>
+            {onEndGame && you.id === room.hostId && <HudEndGame onClick={onEndGame} />}
+          </>
+        }
+      />
 
       <PlayerStrip players={room.players} you={you} />
 
@@ -118,8 +129,8 @@ export function SolitaireGame({
         <aside className="solitaire-side" aria-label="Solitaire help">
           <span className="solitaire-side-kicker">How to move</span>
           <p className="solitaire-help">
-            Tap a card, then tap where it goes. Double-tap a card to send it straight to its
-            foundation.
+            Drag a card — or a run — where it goes. Double-tap a card to send it straight to its
+            foundation. Safe cards climb up on their own.
           </p>
           <div className="solitaire-legend">
             <span><i className="legend-dot legend-given" /> foundations build up</span>
@@ -138,6 +149,14 @@ export function SolitaireGame({
             <div>
               <span>Home</span>
               <strong>{home}/52</strong>
+            </div>
+            <div>
+              <span>Solver</span>
+              {solverStatus === 'solvable' && <StatusPill tone="success">Solvable</StatusPill>}
+              {solverStatus === 'unsolvable' && <StatusPill tone="live">Stuck</StatusPill>}
+              {solverStatus === 'checking' && <StatusPill tone="neutral">Checking…</StatusPill>}
+              {solverStatus === 'unsure' && <StatusPill tone="neutral">Unsure</StatusPill>}
+              {solverStatus === 'idle' && <StatusPill tone="neutral">—</StatusPill>}
             </div>
           </div>
           <p className="solitaire-help solitaire-help-shared">

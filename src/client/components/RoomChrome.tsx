@@ -1,5 +1,5 @@
 import type { RoomStatus } from '../../shared/types';
-import { Link } from '../lib/router';
+import { statusLabel } from '../lib/format';
 import { Logo, StatusPill, ThemeToggle } from './ui';
 import { IconCopy, IconGear, IconUsers, IconX } from './icons';
 
@@ -32,20 +32,11 @@ export function RoomChrome({
   onCloseRoom: () => void;
   onReturnLobby: () => void;
 }) {
-  const label =
-    status === 'playing'
-      ? 'Live'
-      : status === 'countdown'
-        ? 'Starting'
-        : status === 'results'
-          ? 'Results'
-          : 'Lobby';
+  const live = status === 'playing';
 
   return (
     <header className="room-bar">
-      <Link to="/" className="room-home" aria-label="Leave and go home">
-        <Logo small />
-      </Link>
+      <Logo small />
 
       <button className="room-code" onClick={onCopyCode} aria-label={`Copy room code ${code}`}>
         <span>ROOM</span>
@@ -54,9 +45,9 @@ export function RoomChrome({
       </button>
 
       <div className="room-bar-middle">
-        <StatusPill tone={status === 'playing' ? 'live' : status === 'results' ? 'warm' : 'neutral'}>
-          {status === 'playing' && <span className="live-dot" />}
-          {label}
+        <StatusPill tone={live ? 'live' : status === 'results' ? 'warm' : 'neutral'}>
+          {live && <span className="live-dot" />}
+          {statusLabel(status)}
         </StatusPill>
         <span className="room-player-count">
           <IconUsers size={14} /> {count}/{max}
@@ -64,9 +55,6 @@ export function RoomChrome({
       </div>
 
       <div className="room-bar-actions">
-        <button className="button button-secondary button-sm invite-button" onClick={onInvite}>
-          <IconUsers size={16} /> <span>Invite</span>
-        </button>
         <ThemeToggle />
         <button
           className={`icon-button ${menuOpen ? 'icon-button-on' : ''}`}
@@ -82,15 +70,9 @@ export function RoomChrome({
         <>
           <div className="menu-backdrop" onClick={onCloseMenu} />
           <div className="room-menu" role="menu">
-            <button type="button" role="menuitem" onClick={onInvite}>
-              Invite players
-            </button>
-            <button type="button" role="menuitem" onClick={onCopyCode}>
-              Copy room code
-            </button>
-            {isHost && (status === 'playing' || status === 'results') && (
+            {isHost && status !== 'lobby' && (
               <button type="button" role="menuitem" onClick={onReturnLobby}>
-                Back to the lobby
+                {status === 'countdown' ? 'Cancel the countdown' : 'Back to the lobby'}
               </button>
             )}
             <div className="menu-separator" />

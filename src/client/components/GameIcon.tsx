@@ -1,5 +1,5 @@
 import type { GameKind } from '../../shared/types';
-import { IconFreeCell, IconKlondike, IconMine, IconSudoku } from './icons';
+import { IconFreeCell, IconKlondike, IconMahjong, IconMine, IconSudoku } from './icons';
 
 export function GameIcon({ game, size = 20 }: { game: GameKind; size?: number }) {
   switch (game) {
@@ -9,6 +9,8 @@ export function GameIcon({ game, size = 20 }: { game: GameKind; size?: number })
       return <IconKlondike size={size} />;
     case 'freecell':
       return <IconFreeCell size={size} />;
+    case 'mahjong':
+      return <IconMahjong size={size} />;
     default:
       return <IconMine size={size} />;
   }

@@ -8,10 +8,10 @@ import {
   type PointerEvent
 } from 'react';
 import type { PublicRoom, You } from '../../shared/types';
-import { formatClock } from '../lib/format';
 import { Board } from './Board';
+import { GameHud, HudEndGame, HudTimer } from './GameHud';
 import { Hearts, useNow } from './ui';
-import { IconClock, IconEye, IconFlag, IconMine } from './icons';
+import { IconEye, IconFlag, IconMine } from './icons';
 import { PlayerStrip } from './PlayerStrip';
 
 export interface GameProps {
@@ -25,6 +25,7 @@ export interface GameProps {
   onFlag: (i: number) => void;
   onChord: (i: number) => void;
   onCursor: (x: number, y: number) => void;
+  onEndGame?: () => void;
 }
 
 export function Game({
@@ -37,7 +38,8 @@ export function Game({
   onReveal,
   onFlag,
   onChord,
-  onCursor
+  onCursor,
+  onEndGame
 }: GameProps) {
   const round = room.round;
   const now = useNow(200);
@@ -138,35 +140,33 @@ export function Game({
 
   return (
     <section className={`game ${isWide ? 'game-big' : ''}`} aria-label="Game">
-      <div className="game-hud">
-        <div className="hud-group">
-          {paused && <span className="live-pill">PAUSED</span>}
-          <span className="hud-timer" aria-label={`Elapsed ${formatClock(elapsedMs / 1000)}`}>
-            <IconClock size={16} />
-            <strong>{formatClock(elapsedMs / 1000)}</strong>
-          </span>
-        </div>
-
-        <div className="hud-center">
-          <Hearts lives={round.lives} total={room.settings.lives} />
-        </div>
-
-        <div className="hud-group hud-right">
-          <span
-            className="flag-count"
-            aria-label={`${accountedMines} of ${round.mines} mines accounted for: ${flags.size} ${flags.size === 1 ? 'flag' : 'flags'} placed and ${revealedMines} ${revealedMines === 1 ? 'mine' : 'mines'} hit`}
-          >
-            <IconFlag size={18} />
-            <strong>{accountedMines}</strong>
-            <span>/ {round.mines}</span>
-          </span>
-          {you.role === 'spectator' && (
-            <span className="watching-pill">
-              <IconEye size={14} /> Watching
+      <GameHud
+        left={
+          <>
+            {paused && <span className="live-pill">PAUSED</span>}
+            <HudTimer seconds={elapsedMs / 1000} />
+          </>
+        }
+        center={<Hearts lives={round.lives} total={room.settings.lives} />}
+        right={
+          <>
+            <span
+              className="flag-count"
+              aria-label={`${accountedMines} of ${round.mines} mines accounted for: ${flags.size} ${flags.size === 1 ? 'flag' : 'flags'} placed and ${revealedMines} ${revealedMines === 1 ? 'mine' : 'mines'} hit`}
+            >
+              <IconFlag size={18} />
+              <strong>{accountedMines}</strong>
+              <span>/ {round.mines}</span>
             </span>
-          )}
-        </div>
-      </div>
+            {you.role === 'spectator' && (
+              <span className="watching-pill">
+                <IconEye size={14} /> Watching
+              </span>
+            )}
+            {onEndGame && you.id === room.hostId && <HudEndGame onClick={onEndGame} />}
+          </>
+        }
+      />
 
       <PlayerStrip players={room.players} you={you} />
 

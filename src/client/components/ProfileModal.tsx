@@ -62,9 +62,6 @@ export function ProfileModal({
             {error}
           </div>
         )}
-        <p className="profile-note">
-          Change this any time in the lobby. You join first — the name can catch up.
-        </p>
         <div className="settings-actions">
           <button type="button" className="button button-ghost" onClick={onClose}>
             Cancel

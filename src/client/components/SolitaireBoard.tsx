@@ -1,3 +1,5 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   RANK_LABELS,
   SUITS,
@@ -9,7 +11,9 @@ import {
   type PublicSolitaire,
   type SolitaireSlot
 } from '../../shared/types';
+import { canPlace, locateCard, movingCards } from '../../shared/solitaire';
 import { classNames } from '../lib/format';
+import { solitaireView } from '../lib/solitaireView';
 import { IconRefresh } from './icons';
 
 interface Props {
@@ -23,7 +27,40 @@ interface Props {
   onAuto: (card: number) => void;
 }
 
-function findCard(solitaire: PublicSolitaire, card: number): SolitaireSlot | 'waste' | null {
+type DropSource = SolitaireSlot | 'waste';
+
+interface DragInfo {
+  pointerId: number;
+  card: number;
+  cards: number[];
+  cardWidth: number;
+  step: number;
+  grabX: number;
+  grabY: number;
+  startX: number;
+  startY: number;
+  active: boolean;
+}
+
+interface DragView {
+  card: number;
+  cards: number[];
+  x: number;
+  y: number;
+  grabX: number;
+  grabY: number;
+  step: number;
+  cardWidth: number;
+}
+
+interface DragEvents {
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+}
+
+function findCard(solitaire: PublicSolitaire, card: number): DropSource | null {
   for (let index = 0; index < solitaire.tableau.length; index += 1) {
     if (solitaire.tableau[index].includes(card)) return { zone: 'tableau', index };
   }
@@ -37,18 +74,60 @@ function findCard(solitaire: PublicSolitaire, card: number): SolitaireSlot | 'wa
   return null;
 }
 
+function dropTargetAt(x: number, y: number): SolitaireSlot | null {
+  const hit = document.elementFromPoint(x, y);
+  const drop = hit?.closest('[data-drop]')?.getAttribute('data-drop');
+  if (!drop) return null;
+  const separator = drop.indexOf(':');
+  if (separator < 0) return null;
+  const zone = drop.slice(0, separator);
+  const index = Number(drop.slice(separator + 1));
+  if (zone !== 'tableau' && zone !== 'foundation' && zone !== 'freecell') return null;
+  if (!Number.isInteger(index)) return null;
+  return { zone, index };
+}
+
+function CardFace({ card, className, style }: { card: number; className?: string; style?: CSSProperties }) {
+  const red = isRedCard(card);
+  const suit = cardSuit(card);
+  const rank = RANK_LABELS[cardRank(card)];
+  return (
+    <span
+      className={classNames(
+        'solitaire-card',
+        red ? 'solitaire-card-red' : 'solitaire-card-black',
+        className
+      )}
+      style={style}
+      aria-hidden="true"
+    >
+      <span className="solitaire-card-corner">
+        <strong>{rank}</strong>
+        <span>{SUIT_SYMBOLS[suit]}</span>
+      </span>
+      <span className="solitaire-card-pip">{SUIT_SYMBOLS[suit]}</span>
+    </span>
+  );
+}
+
 function PlayingCard({
   card,
   selected,
   disabled,
+  dragging,
+  dataCard,
   onCardClick,
-  onCardDoubleClick
+  onCardDoubleClick,
+  dragEvents
 }: {
   card: number;
   selected: boolean;
   disabled: boolean;
+  dragging: boolean;
+  dataCard?: boolean;
   onCardClick: () => void;
   onCardDoubleClick: () => void;
+  dragEvents?: DragEvents;
 }) {
   const red = isRedCard(card);
   const suit = cardSuit(card);
@@ -56,10 +135,12 @@ function PlayingCard({
   return (
     <button
       type="button"
+      data-card={dataCard ? card : undefined}
       className={classNames(
         'solitaire-card',
         red ? 'solitaire-card-red' : 'solitaire-card-black',
-        selected && 'solitaire-card-selected'
+        selected && 'solitaire-card-selected',
+        dragging && 'solitaire-card-dragging'
       )}
       onClick={(event) => {
         event.stopPropagation();
@@ -69,6 +150,7 @@ function PlayingCard({
         event.stopPropagation();
         onCardDoubleClick();
       }}
+      {...dragEvents}
       disabled={disabled}
       aria-label={`Play ${cardLabel(card)}`}
       aria-pressed={selected}
@@ -91,6 +173,79 @@ function CardBack({ count }: { count?: number }) {
   );
 }
 
+const FLIGHT_MS = 180;
+const activeFlights = new WeakMap<HTMLElement, Animation>();
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Briefly fly `el` from `from` to where it sits now (FLIP): invert the delta,
+ * then let a Web Animation carry it to rest. Used when cards are moved for the
+ * player (safe autoplay, double-tap, click-moves) so they don't teleport.
+ */
+function flyCard(el: HTMLElement, from: DOMRect, to: DOMRect, lift: boolean) {
+  const dx = from.left - to.left;
+  const dy = from.top - to.top;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+  activeFlights.get(el)?.cancel();
+  if (prefersReducedMotion()) {
+    el.style.zIndex = '';
+    return;
+  }
+  const shadow = 'drop-shadow(0 9px 12px rgba(15, 23, 42, 0.25))';
+  const anim = el.animate(
+    [
+      {
+        transform: `translate3d(${dx}px, ${dy}px, 0)`,
+        ...(lift ? { filter: shadow } : {})
+      },
+      {
+        transform: 'translate3d(0, 0, 0)',
+        ...(lift ? { filter: 'drop-shadow(0 0 0 rgba(15, 23, 42, 0))' } : {})
+      }
+    ],
+    { duration: FLIGHT_MS, easing: 'cubic-bezier(0.22, 0.9, 0.3, 1)' }
+  );
+  activeFlights.set(el, anim);
+  if (lift) {
+    el.style.zIndex = '50';
+    anim.onfinish = () => {
+      if (activeFlights.get(el) === anim) {
+        activeFlights.delete(el);
+        el.style.zIndex = '';
+      }
+    };
+  }
+  // If frames never tick (occluded or throttled window), the animation would
+  // hold the card mid-flight forever — snap it home instead.
+  window.setTimeout(() => {
+    if (activeFlights.get(el) === anim) {
+      anim.cancel();
+      el.style.zIndex = '';
+    }
+  }, FLIGHT_MS + 350);
+}
+
+/** Stable per-card location key, so a diff can tell "moved" from "re-measured". */
+function locationMap(solitaire: PublicSolitaire): Map<number, string> {
+  const map = new Map<number, string>();
+  solitaire.tableau.forEach((column, c) =>
+    column.forEach((card, p) => {
+      if (card >= 0) map.set(card, `t${c}:${p}`);
+    })
+  );
+  solitaire.waste.forEach((card, i) => map.set(card, `w${i}`));
+  solitaire.freeCells.forEach((card, c) => {
+    if (card !== null) map.set(card, `c${c}`);
+  });
+  solitaire.foundations.forEach((pile, f) => pile.forEach((card, p) => map.set(card, `f${f}:${p}`)));
+  return map;
+}
+
+const DRAG_THRESHOLD_PX = 5;
+
 export function SolitaireBoard({
   solitaire,
   selected,
@@ -101,9 +256,67 @@ export function SolitaireBoard({
   onRecycle,
   onAuto
 }: Props) {
+  const view = useMemo(() => solitaireView(solitaire), [solitaire]);
   const selectedSlot = selected === null ? null : findCard(solitaire, selected);
+  const dragRef = useRef<DragInfo | null>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const suppressClickRef = useRef(false);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const rectsRef = useRef<Map<number, { el: HTMLElement; rect: DOMRect }>>(new Map());
+  const prevStateRef = useRef<PublicSolitaire | null>(null);
+  const dragMoveRef = useRef<{ cards: number[]; at: number } | null>(null);
+  const [drag, setDrag] = useState<DragView | null>(null);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
 
-  const clickCard = (card: number, slot: SolitaireSlot | 'waste') => {
+  const endDrag = () => {
+    dragRef.current = null;
+    setDrag(null);
+    setHoverKey(null);
+  };
+
+  // Someone else may move or sweep the dragged cards mid-drag; bail out then.
+  useEffect(() => {
+    if (!drag) return;
+    if (findCard(solitaire, drag.card) === null) endDrag();
+  }, [solitaire, drag]);
+
+  // Flight pass: after each commit, diff card locations against the previous
+  // state and fly whatever moved (safe autoplay, double-tap, click-moves) from
+  // where it used to be. Drag drops are skipped — the ghost already carried
+  // those cards to their drop point.
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    const rects = new Map<number, { el: HTMLElement; rect: DOMRect }>();
+    if (board) {
+      board.querySelectorAll<HTMLElement>('[data-card]').forEach((el) => {
+        const card = Number(el.dataset.card);
+        if (Number.isInteger(card)) rects.set(card, { el, rect: el.getBoundingClientRect() });
+      });
+    }
+    const prev = prevStateRef.current;
+    if (prev && prev !== solitaire && prev.id === solitaire.id) {
+      const drag = dragMoveRef.current;
+      const skip = drag && Date.now() - drag.at < 600 ? new Set(drag.cards) : null;
+      const prevLoc = locationMap(prev);
+      const nextLoc = locationMap(solitaire);
+      for (const [card, entry] of rects) {
+        if (skip?.has(card)) continue;
+        const from = rectsRef.current.get(card);
+        if (!from) continue;
+        if (prevLoc.get(card) !== nextLoc.get(card)) {
+          flyCard(entry.el, from.rect, entry.rect, true);
+        } else if (entry.el.closest('.solitaire-waste')) {
+          flyCard(entry.el, from.rect, entry.rect, false);
+        }
+      }
+    }
+    if (prev !== solitaire) dragMoveRef.current = null;
+    rectsRef.current = rects;
+    prevStateRef.current = solitaire;
+  });
+
+  const clickCard = (card: number, slot: DropSource) => {
+    if (suppressClickRef.current) return;
     if (disabled) return;
     if (selected === card) {
       onSelect(null);
@@ -144,11 +357,117 @@ export function SolitaireBoard({
     onSelect(null);
   };
 
+  const cardPointerDown = (
+    card: number,
+    slot: DropSource,
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) => {
+    suppressClickRef.current = false;
+    if (disabled || dragRef.current) return;
+    const location = locateCard(view, card);
+    if (!location) return;
+    const cards = movingCards(view, location);
+    if (cards.length === 0 || cards[0] !== card) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      card,
+      cards,
+      cardWidth: rect.width,
+      step: 0,
+      grabX: event.clientX - rect.left,
+      grabY: event.clientY - rect.top,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false
+    };
+    const info = dragRef.current;
+    const maxFan = info.cardWidth * 1.4 * 4;
+    info.step =
+      cards.length > 1 ? Math.min(info.cardWidth * 0.5, maxFan / (cards.length - 1)) : 0;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // pointer already released
+    }
+  };
+
+  const cardPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const info = dragRef.current;
+    if (!info || event.pointerId !== info.pointerId) return;
+    if (!info.active) {
+      if (Math.hypot(event.clientX - info.startX, event.clientY - info.startY) < DRAG_THRESHOLD_PX) {
+        return;
+      }
+      info.active = true;
+      onSelect(null);
+      setDrag({
+        card: info.card,
+        cards: info.cards,
+        x: event.clientX - info.grabX,
+        y: event.clientY - info.grabY,
+        grabX: info.grabX,
+        grabY: info.grabY,
+        step: info.step,
+        cardWidth: info.cardWidth
+      });
+    }
+    if (ghostRef.current) {
+      ghostRef.current.style.transform = `translate3d(${event.clientX - info.grabX}px, ${
+        event.clientY - info.grabY
+      }px, 0)`;
+    }
+    const target = dropTargetAt(event.clientX, event.clientY);
+    const valid = target !== null && canPlace(view, info.cards, target);
+    const next = valid ? `${target.zone}:${target.index}` : null;
+    setHoverKey((prev) => (prev === next ? prev : next));
+  };
+
+  const cardPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const info = dragRef.current;
+    if (!info || event.pointerId !== info.pointerId) return;
+    const wasActive = info.active;
+    const card = info.card;
+    dragRef.current = null;
+    if (!wasActive) return;
+    setDrag(null);
+    setHoverKey(null);
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+    const target = dropTargetAt(event.clientX, event.clientY);
+    if (!target) return;
+    const location = locateCard(view, card);
+    const cards = location ? movingCards(view, location) : [];
+    if (cards.length === 0 || cards[0] !== card) return;
+    if (!canPlace(view, cards, target)) return;
+    dragMoveRef.current = { cards, at: Date.now() };
+    onMove(card, target);
+  };
+
+  const cardPointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const info = dragRef.current;
+    if (!info || event.pointerId !== info.pointerId) return;
+    if (info.active) endDrag();
+    else dragRef.current = null;
+  };
+
+  const dragEventsFor = (card: number, slot: DropSource): DragEvents | undefined => {
+    if (disabled) return undefined;
+    return {
+      onPointerDown: (event) => cardPointerDown(card, slot, event),
+      onPointerMove: cardPointerMove,
+      onPointerUp: cardPointerUp,
+      onPointerCancel: cardPointerCancel
+    };
+  };
+
   const topWaste = solitaire.waste.length > 0 ? solitaire.waste[solitaire.waste.length - 1] : null;
   const visibleWaste = solitaire.waste.slice(-3);
 
   return (
-    <div className={`solitaire-board solitaire-board-${solitaire.variant}`}>
+    <div ref={boardRef} className={`solitaire-board solitaire-board-${solitaire.variant}`}>
       <div className="solitaire-top">
         <div className="solitaire-pile-line">
           {solitaire.variant === 'klondike' ? (
@@ -192,6 +511,7 @@ export function SolitaireBoard({
                     return (
                       <span
                         key={card}
+                        data-card={card}
                         className="solitaire-waste-card"
                         style={{ left: `calc(${index} * var(--card-w) * 0.3)` }}
                       >
@@ -200,16 +520,13 @@ export function SolitaireBoard({
                             card={card}
                             selected={selected === card}
                             disabled={disabled}
+                            dragging={drag?.cards.includes(card) ?? false}
                             onCardClick={() => clickCard(card, 'waste')}
                             onCardDoubleClick={() => doubleClickCard(card)}
+                            dragEvents={dragEventsFor(card, 'waste')}
                           />
                         ) : (
-                          <span className="solitaire-card solitaire-card-static" aria-hidden="true">
-                            <span className="solitaire-card-corner">
-                              <strong>{RANK_LABELS[cardRank(card)]}</strong>
-                              <span>{SUIT_SYMBOLS[cardSuit(card)]}</span>
-                            </span>
-                          </span>
+                          <CardFace card={card} className="solitaire-card-static" />
                         )}
                       </span>
                     );
@@ -220,7 +537,14 @@ export function SolitaireBoard({
           ) : (
             <div className="solitaire-freecells" aria-label="Free cells">
               {solitaire.freeCells.map((card, index) => (
-                <div className="solitaire-freecell" key={index}>
+                <div
+                  className={classNames(
+                    'solitaire-freecell',
+                    hoverKey === `freecell:${index}` && 'solitaire-drop-ok'
+                  )}
+                  key={index}
+                  data-drop={`freecell:${index}`}
+                >
                   {card === null ? (
                     <button
                       type="button"
@@ -237,10 +561,13 @@ export function SolitaireBoard({
                   ) : (
                     <PlayingCard
                       card={card}
+                      dataCard
                       selected={selected === card}
                       disabled={disabled}
+                      dragging={drag?.cards.includes(card) ?? false}
                       onCardClick={() => clickCard(card, { zone: 'freecell', index })}
                       onCardDoubleClick={() => doubleClickCard(card)}
+                      dragEvents={dragEventsFor(card, { zone: 'freecell', index })}
                     />
                   )}
                 </div>
@@ -256,7 +583,14 @@ export function SolitaireBoard({
             const top = pile.length > 0 ? pile[pile.length - 1] : null;
             const suit = SUITS[index];
             return (
-              <div className="solitaire-foundation" key={index}>
+              <div
+                className={classNames(
+                  'solitaire-foundation',
+                  hoverKey === `foundation:${index}` && 'solitaire-drop-ok'
+                )}
+                key={index}
+                data-drop={`foundation:${index}`}
+              >
                 {top === null ? (
                   <button
                     type="button"
@@ -273,10 +607,13 @@ export function SolitaireBoard({
                 ) : (
                   <PlayingCard
                     card={top}
+                    dataCard
                     selected={selected === top}
                     disabled={disabled}
+                    dragging={drag?.cards.includes(top) ?? false}
                     onCardClick={() => clickCard(top, { zone: 'foundation', index })}
                     onCardDoubleClick={() => doubleClickCard(top)}
+                    dragEvents={dragEventsFor(top, { zone: 'foundation', index })}
                   />
                 )}
               </div>
@@ -289,7 +626,14 @@ export function SolitaireBoard({
         {solitaire.tableau.map((column, index) => {
           const faceDown = solitaire.faceDown[index] ?? 0;
           return (
-            <div className="solitaire-column" key={index}>
+            <div
+              className={classNames(
+                'solitaire-column',
+                hoverKey === `tableau:${index}` && 'solitaire-drop-ok'
+              )}
+              key={index}
+              data-drop={`tableau:${index}`}
+            >
               {column.length === 0 ? (
                 <button
                   type="button"
@@ -310,6 +654,7 @@ export function SolitaireBoard({
                       <div
                         className="solitaire-card-wrap"
                         key={`down-${position}`}
+                        data-card={card >= 0 ? card : undefined}
                         onClick={() => {
                           if (selected !== null) clickSlot({ zone: 'tableau', index });
                         }}
@@ -322,10 +667,13 @@ export function SolitaireBoard({
                     <div className="solitaire-card-wrap" key={card}>
                       <PlayingCard
                         card={card}
+                        dataCard
                         selected={selected === card}
                         disabled={disabled}
+                        dragging={drag?.cards.includes(card) ?? false}
                         onCardClick={() => clickCard(card, { zone: 'tableau', index })}
                         onCardDoubleClick={() => doubleClickCard(card)}
+                        dragEvents={dragEventsFor(card, { zone: 'tableau', index })}
                       />
                     </div>
                   );
@@ -335,6 +683,30 @@ export function SolitaireBoard({
           );
         })}
       </div>
+
+      {drag &&
+        createPortal(
+          <div
+            ref={ghostRef}
+            className="solitaire-drag-ghost"
+            style={
+              {
+                '--card-w': `${drag.cardWidth}px`,
+                transform: `translate3d(${drag.x}px, ${drag.y}px, 0)`
+              } as CSSProperties
+            }
+          >
+            {drag.cards.map((card, index) => (
+              <CardFace
+                key={card}
+                card={card}
+                className="solitaire-drag-ghost-card"
+                style={{ top: index * drag.step }}
+              />
+            ))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   type PresetId,
   type RoomSettings
 } from '../shared/types';
+import { isMahjongLayout } from '../shared/mahjong';
 import { Room, defaultSettings, hashToken, newToken } from './room';
 
 const MAX_ROOMS = 5000;
@@ -26,6 +27,7 @@ export interface CreateInput {
   maxPlayers?: number;
   lateJoin?: boolean;
   klondikeDraw?: number;
+  mahjongLayout?: string;
 }
 
 export type CreateResult =
@@ -64,6 +66,9 @@ export class RoomRegistry {
       lateJoin: input.lateJoin ?? true,
       klondikeDraw
     };
+    if (input.mahjongLayout && isMahjongLayout(input.mahjongLayout)) {
+      settings.mahjongLayout = input.mahjongLayout;
+    }
 
     let code = '';
     for (let attempt = 0; attempt < 100; attempt += 1) {

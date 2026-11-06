@@ -76,10 +76,6 @@ export function Avatar({
   );
 }
 
-export function PlayerDot({ color }: { color: string }) {
-  return <span className="player-dot" style={{ background: color }} aria-hidden="true" />;
-}
-
 export function Modal({
   open,
   onClose,

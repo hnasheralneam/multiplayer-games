@@ -2,13 +2,14 @@ import { z } from 'zod';
 import type { ClientMessage } from '../shared/types';
 
 const settings = z.object({
-  game: z.enum(['minesweeper', 'sudoku', 'klondike', 'freecell']),
+  game: z.enum(['minesweeper', 'sudoku', 'klondike', 'freecell', 'mahjong']),
   preset: z.enum(['cozy', 'classic', 'big']),
   lives: z.number().int().min(1).max(5),
   maxPlayers: z.number().int().min(2).max(8),
   lateJoin: z.boolean(),
   sudokuDifficulty: z.enum(['easy', 'medium', 'hard']),
-  klondikeDraw: z.union([z.literal(1), z.literal(3)])
+  klondikeDraw: z.union([z.literal(1), z.literal(3)]),
+  mahjongLayout: z.enum(['turtle', 'pyramid', 'cozy'])
 });
 
 const slot = z.object({
@@ -43,6 +44,12 @@ const schema = z.discriminatedUnion('t', [
     action: z.enum(['draw', 'recycle', 'move', 'auto']),
     card: z.number().int().min(0).max(51).optional(),
     to: slot.optional()
+  }),
+  z.object({
+    t: z.literal('mahjong'),
+    action: z.enum(['match', 'shuffle']),
+    a: z.number().int().min(0).max(143).optional(),
+    b: z.number().int().min(0).max(143).optional()
   }),
   z.object({ t: z.literal('lobby') }),
   z.object({

@@ -4,7 +4,7 @@ import { usePath, Link } from './lib/router';
 import { Home } from './pages/Home';
 import { JoinPage } from './pages/JoinPage';
 import { RoomPage } from './pages/RoomPage';
-import { Logo } from './components/ui';
+import { StateScreen } from './components/StateScreen';
 import { IconArrow } from './components/icons';
 
 function InvalidCode({ code }: { code: string }) {
@@ -12,25 +12,22 @@ function InvalidCode({ code }: { code: string }) {
     document.title = 'Room not found · Games, together';
   }, []);
   return (
-    <div className="center-page">
-      <div className="center-card">
-        <Logo />
-        <span className="eyebrow">That is not a room code</span>
-        <h1>{code.slice(0, 12)} is not four characters.</h1>
-        <p>
-          Codes use four letters and numbers, and skip the confusing ones. Check the host's
-          screen and try again.
-        </p>
-        <div className="center-actions">
+    <StateScreen
+      logo
+      eyebrow="That is not a room code"
+      title={`${code.slice(0, 12)} is not four characters.`}
+      body="Codes use four letters and numbers, and skip the confusing ones. Check the host's screen and try again."
+      actions={
+        <>
           <Link className="button button-primary button-xl" to="/join">
             Try a code <IconArrow size={18} />
           </Link>
           <Link className="button button-secondary button-xl" to="/">
             Back home
           </Link>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }
 
@@ -39,19 +36,17 @@ function NotFound() {
     document.title = 'Not found · Games, together';
   }, []);
   return (
-    <div className="center-page">
-      <div className="center-card">
-        <Logo />
-        <span className="eyebrow">404</span>
-        <h1>Nothing lives here.</h1>
-        <p>This page is not a room. The mines are that way.</p>
-        <div className="center-actions">
-          <Link className="button button-primary button-xl" to="/">
-            Back home <IconArrow size={18} />
-          </Link>
-        </div>
-      </div>
-    </div>
+    <StateScreen
+      logo
+      eyebrow="404"
+      title="Nothing lives here."
+      body="This page is not a room. The mines are that way."
+      actions={
+        <Link className="button button-primary button-xl" to="/">
+          Back home <IconArrow size={18} />
+        </Link>
+      }
+    />
   );
 }
 

@@ -3,13 +3,11 @@ import { GAME_META, GAME_ORDER, extractCode, type GameKind } from '../../shared/
 import { createRoom } from '../lib/api';
 import { loadProfile, saveProfile, saveToken, touchRecent } from '../lib/storage';
 import { navigate, Link } from '../lib/router';
-import { IconArrow, IconPlus, IconUsers } from '../components/icons';
+import { IconArrow, IconFlag, IconMine, IconPlus, IconUsers } from '../components/icons';
 import { GameIcon } from '../components/GameIcon';
-import { Logo, Spinner, StatusPill, ThemeToggle } from '../components/ui';
+import { Logo, Spinner, ThemeToggle } from '../components/ui';
 
 const HERO_TILES: Array<{ state: 'hidden' | 'open' | 'flag' | 'mine'; n?: number }> = [
-  { state: 'hidden' },
-  { state: 'hidden' },
   { state: 'open', n: 1 },
   { state: 'open', n: 0 },
   { state: 'hidden' },
@@ -18,28 +16,20 @@ const HERO_TILES: Array<{ state: 'hidden' | 'open' | 'flag' | 'mine'; n?: number
   { state: 'open', n: 2 },
   { state: 'open', n: 1 },
   { state: 'open', n: 0 },
-  { state: 'open', n: 1 },
-  { state: 'hidden' },
   { state: 'hidden' },
   { state: 'hidden' },
   { state: 'flag' },
   { state: 'open', n: 2 },
   { state: 'open', n: 0 },
   { state: 'open', n: 1 },
-  { state: 'open', n: 1 },
-  { state: 'hidden' },
   { state: 'hidden' },
   { state: 'hidden' },
   { state: 'hidden' },
   { state: 'open', n: 1 },
   { state: 'open', n: 0 },
-  { state: 'open', n: 0 },
   { state: 'hidden' },
   { state: 'hidden' },
   { state: 'hidden' },
-  { state: 'hidden' },
-  { state: 'hidden' },
-  { state: 'open', n: 1 },
   { state: 'hidden' },
   { state: 'mine' },
   { state: 'hidden' }
@@ -96,9 +86,6 @@ export function Home() {
       <header className="site-header">
         <Logo />
         <nav className="site-nav">
-          <Link to="/join" className="nav-join">
-            Join a room
-          </Link>
           <ThemeToggle />
         </nav>
       </header>
@@ -106,16 +93,11 @@ export function Home() {
       <main className="home">
         <section className="hero">
           <div className="hero-copy">
-            <div className="eyebrow">
-              <span className="eyebrow-dot" /> 2–8 players · no signup
-            </div>
             <h1>
-              Pull up a chair.
-              <br />
-              <em>Pick a game.</em>
+              <em>Pick a game</em>
             </h1>
             <p className="hero-lede">
-              One room, one link. Play Minesweeper, Sudoku, Klondike, or FreeCell with the people around you.
+              Play quick games with your friends.
             </p>
 
             <div className="hero-actions">
@@ -126,14 +108,6 @@ export function Home() {
               >
                 {creating === 'group' ? <Spinner label="Creating room" /> : <IconPlus size={20} />}
                 {creating === 'group' ? 'Making a room…' : 'Create a room'}
-              </button>
-              <button
-                className="button button-secondary button-xl"
-                onClick={() => void create('duo')}
-                disabled={Boolean(creating)}
-              >
-                {creating === 'duo' ? <Spinner label="Creating room" /> : <IconUsers size={20} />}
-                {creating === 'duo' ? 'Setting the table…' : 'New with a friend'}
               </button>
             </div>
             <form className="quick-join" onSubmit={join}>
@@ -171,18 +145,22 @@ export function Home() {
           </div>
 
           <div className="hero-art" aria-hidden="true">
-            <div className="hero-board-wrap">
-              <div className="hero-board">
-                {HERO_TILES.map((tile, index) => (
-                  <span
-                    key={index}
-                    className={`mini-tile mini-${tile.state}`}
-                    data-n={tile.n ?? ''}
-                  >
-                    {tile.state === 'flag' ? '🚩' : tile.state === 'mine' ? '💥' : tile.n || ''}
-                  </span>
-                ))}
-              </div>
+            <div className="hero-board">
+              {HERO_TILES.map((tile, index) => (
+                <span
+                  key={index}
+                  className={`mini-tile mini-${tile.state}`}
+                  data-n={tile.n ?? ''}
+                >
+                  {tile.state === 'flag' ? (
+                    <IconFlag size={19} />
+                  ) : tile.state === 'mine' ? (
+                    <IconMine size={19} />
+                  ) : (
+                    tile.n || ''
+                  )}
+                </span>
+              ))}
               <span className="hero-cursor hero-cursor-a">
                 <span className="cursor-arrow" /> 🦦 Maya
               </span>
@@ -190,18 +168,12 @@ export function Home() {
                 <span className="cursor-arrow" /> 🐈 Sam
               </span>
             </div>
-            <div className="hero-caption">
-              <StatusPill tone="live">LIVE</StatusPill>
-              <span>2 lives · 40 mines · 4:32</span>
-            </div>
           </div>
         </section>
 
         <section className="game-picker" id="games">
           <div className="section-heading">
-            <span className="eyebrow">Pick a table</span>
-            <h2>Four games. One room.</h2>
-            <p>Tap any game and it opens a lobby with that game already selected.</p>
+            <h2>Games available</h2>
           </div>
           <div className="game-card-grid">
             {GAME_ORDER.map((game) => {
@@ -211,15 +183,12 @@ export function Home() {
                 <button
                   key={game}
                   type="button"
-                  className={`game-card game-card-${game}`}
+                  className="game-card"
                   onClick={() => void create('game', game)}
                   disabled={Boolean(creating)}
                 >
-                  <span className="game-card-top">
-                    <span className="game-card-icon">
-                      <GameIcon game={game} size={24} />
-                    </span>
-                    <span className="game-card-kicker">{meta.kicker}</span>
+                  <span className="game-card-icon">
+                    <GameIcon game={game} size={22} />
                   </span>
                   <strong>{meta.label}</strong>
                   <span className="game-card-blurb">{meta.blurb}</span>

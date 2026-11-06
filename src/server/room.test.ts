@@ -125,6 +125,53 @@ describe('room flow', () => {
     expect(room.status).toBe('countdown');
   });
 
+  it('lets the host end a round early and non-hosts keep playing', () => {
+    const room = makeRoom();
+    const host = testClient();
+    const guest = testClient();
+    room.handleJoin(host, {
+      t: 'join',
+      code: 'K7QP',
+      name: 'Maya',
+      avatar: '🦊',
+      token: 'host-token'
+    });
+    room.handleJoin(guest, { t: 'join', code: 'K7QP', name: 'Sam', avatar: '🐈' });
+    room.handleMessage(host, { t: 'start' });
+    vi.advanceTimersByTime(3_000);
+    expect(room.status).toBe('playing');
+
+    room.handleMessage(guest, { t: 'lobby' });
+    expect(room.status).toBe('playing');
+    expect(guest.messages.some((message) => message.t === 'error')).toBe(true);
+
+    room.handleMessage(host, { t: 'lobby' });
+    expect(room.status).toBe('lobby');
+    expect(room.round).toBeNull();
+    expect(room.lastResult).toBeNull();
+  });
+
+  it('lets the host cancel a countdown', () => {
+    const room = makeRoom();
+    const host = testClient();
+    const guest = testClient();
+    room.handleJoin(host, {
+      t: 'join',
+      code: 'K7QP',
+      name: 'Maya',
+      avatar: '🦊',
+      token: 'host-token'
+    });
+    room.handleJoin(guest, { t: 'join', code: 'K7QP', name: 'Sam', avatar: '🐈' });
+    room.handleMessage(host, { t: 'start' });
+    expect(room.status).toBe('countdown');
+
+    room.handleMessage(host, { t: 'lobby' });
+    expect(room.status).toBe('lobby');
+    vi.advanceTimersByTime(3_000);
+    expect(room.status).toBe('lobby');
+  });
+
   it('returns Minesweeper players to the lobby after the result', () => {
     const room = makeRoom({ lives: 1 });
     const host = testClient();

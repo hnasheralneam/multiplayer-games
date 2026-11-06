@@ -64,6 +64,20 @@ export function IconFreeCell(props: IconProps) {
   );
 }
 
+export function IconMahjong(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="8.4" y="2.8" width="12" height="12" rx="2.2" transform="rotate(12 14.4 8.8)" />
+      <rect x="3.6" y="6.8" width="12.4" height="14.4" rx="2.2" />
+      <circle cx="7.6" cy="11.4" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="11.4" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="7.6" cy="15.4" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="15.4" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="9.8" cy="18.6" r="1.15" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function IconFlag(props: IconProps) {
   return (
     <svg {...base(props)} viewBox="3 2 18 20">
