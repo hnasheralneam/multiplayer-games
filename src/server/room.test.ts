@@ -201,6 +201,61 @@ describe('room flow', () => {
     expect(room.round).toBeNull();
   });
 
+  function startedMineRound(seed: number) {
+    const room = makeRoom();
+    const host = testClient();
+    const guest = testClient();
+    room.handleJoin(host, {
+      t: 'join',
+      code: 'K7QP',
+      name: 'Maya',
+      avatar: '🦊',
+      token: 'host-token'
+    });
+    room.handleJoin(guest, { t: 'join', code: 'K7QP', name: 'Sam', avatar: '🐈' });
+    room.handleMessage(host, { t: 'start' });
+    vi.advanceTimersByTime(3_000);
+    room.round!.seed = seed;
+    room.handleMessage(host, { t: 'reveal', i: 40 });
+    vi.advanceTimersByTime(60);
+    return { room, host, guest };
+  }
+
+  it('auto-flags every hidden neighbor of a number when they must all be mines', () => {
+    const { room, host, guest } = startedMineRound(42);
+    const hostId = room.toPublic().players.find((player) => player.isHost)!.id;
+    room.handleMessage(host, { t: 'flagChord', i: 22 });
+    expect(room.round?.flags.get(14)).toBe(hostId);
+    const synced = guest.messages.filter((message) => message.t === 'flag');
+    expect(synced.filter((message) => message.t === 'flag' && message.i === 14 && message.on)).toHaveLength(1);
+  });
+
+  it('counts existing flags when auto-flagging the rest', () => {
+    const { room, host } = startedMineRound(42);
+    const hostId = room.toPublic().players.find((player) => player.isHost)!.id;
+    room.handleMessage(host, { t: 'flag', i: 65 });
+    vi.advanceTimersByTime(60);
+    room.handleMessage(host, { t: 'flagChord', i: 57 });
+    expect(room.round?.flags.get(66)).toBe(hostId);
+  });
+
+  it('does nothing when a hidden neighbor could still be safe', () => {
+    const { room, host } = startedMineRound(42);
+    room.handleMessage(host, { t: 'flagChord', i: 13 });
+    expect(room.round?.flags.size).toBe(0);
+  });
+
+  it('ignores flag chords aimed at hidden or flagged tiles', () => {
+    const { room, host } = startedMineRound(42);
+    room.handleMessage(host, { t: 'flagChord', i: 3 });
+    vi.advanceTimersByTime(60);
+    room.handleMessage(host, { t: 'flag', i: 14 });
+    vi.advanceTimersByTime(60);
+    room.handleMessage(host, { t: 'flagChord', i: 14 });
+    expect(room.round?.flags.has(3)).toBe(false);
+    expect(room.round?.flags.size).toBe(1);
+  });
+
   it('runs a shared Sudoku and returns everyone to the lobby', () => {
     const room = makeRoom({ game: 'sudoku', sudokuDifficulty: 'easy' });
     const host = testClient();

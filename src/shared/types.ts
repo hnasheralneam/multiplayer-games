@@ -468,6 +468,12 @@ export interface ChordMessage {
   i: number;
 }
 
+/** Right-click on a number: flag every hidden neighbor when they must all be mines. */
+export interface FlagChordMessage {
+  t: 'flagChord';
+  i: number;
+}
+
 export interface CursorMessageIn {
   t: 'cursor';
   x: number;
@@ -517,6 +523,7 @@ export type ClientMessage =
   | RevealMessage
   | FlagMessageIn
   | ChordMessage
+  | FlagChordMessage
   | CursorMessageIn
   | LeaveMessage
   | CloseRoomMessage

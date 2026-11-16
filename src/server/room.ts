@@ -595,6 +595,9 @@ export class Room {
       case 'chord':
         this.handleChord(client, message.i);
         break;
+      case 'flagChord':
+        this.handleFlagChord(client, message.i);
+        break;
       case 'sudoku':
         this.handleSudokuEntry(client, message.i, message.digit);
         break;
@@ -981,6 +984,29 @@ export class Room {
       this.endRound('won');
       return;
     }
+  }
+
+  private handleFlagChord(client: Client, i: number): void {
+    const player = this.playerFor(client);
+    const round = this.activeRound();
+    if (!player || !round || !round.minesSet) return;
+    const now = Date.now();
+    if (this.resumeAt && now < this.resumeAt) return;
+    if (now - player.lastActionAt < ACTION_COOLDOWN_MS) return;
+    player.lastActionAt = now;
+    if (!Number.isInteger(i) || i < 0 || i >= round.width * round.height) return;
+    const n = round.revealed.get(i);
+    if (n === undefined) return;
+    const around = neighbors(i, round.width, round.height);
+    const flagged = around.filter((index) => round.flags.has(index)).length;
+    const hidden = around.filter((index) => !round.revealed.has(index) && !round.flags.has(index));
+    if (hidden.length === 0 || n - flagged !== hidden.length) return;
+
+    for (const index of hidden) {
+      round.flags.set(index, player.id);
+      this.broadcast({ t: 'flag', i: index, on: true, by: player.id });
+    }
+    this.touch();
   }
 
   private endRound(result: 'won' | 'lost'): void {

@@ -34,6 +34,7 @@ const schema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('reveal'), i: z.number().int().nonnegative() }),
   z.object({ t: z.literal('flag'), i: z.number().int().nonnegative() }),
   z.object({ t: z.literal('chord'), i: z.number().int().nonnegative() }),
+  z.object({ t: z.literal('flagChord'), i: z.number().int().nonnegative() }),
   z.object({
     t: z.literal('sudoku'),
     i: z.number().int().min(0).max(80),

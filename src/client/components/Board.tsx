@@ -25,6 +25,7 @@ export interface BoardProps {
   onReveal: (i: number) => void;
   onFlag: (i: number) => void;
   onChord: (i: number) => void;
+  onFlagChord: (i: number) => void;
   onCursor?: (x: number, y: number) => void;
   recent: Map<number, string>;
   stale: number | null;
@@ -49,6 +50,7 @@ interface CellProps {
   stale: boolean;
   onActivate: (i: number) => void;
   onFlag: (i: number) => void;
+  onFlagChord: (i: number) => void;
   onFocus: (i: number) => void;
   onReveal: (i: number) => void;
 }
@@ -69,11 +71,15 @@ const Cell = memo(function Cell({
   stale,
   onActivate,
   onFlag,
+  onFlagChord,
   onFocus,
   onReveal
 }: CellProps) {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didLongPress = useRef(false);
+
+  const revealed = value !== undefined;
+  const exploded = value === -1;
 
   const clearTimer = () => {
     if (pressTimer.current) {
@@ -84,6 +90,16 @@ const Cell = memo(function Cell({
 
   useEffect(() => clearTimer, []);
 
+  // Right-click / long-press: flag a hidden tile, auto-flag sure mines on a number.
+  const secondary = () => {
+    if (disabled) return;
+    if (revealed) {
+      if ((value ?? 0) > 0) onFlagChord(i);
+    } else {
+      onFlag(i);
+    }
+  };
+
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (disabled) return;
     didLongPress.current = false;
@@ -91,7 +107,7 @@ const Cell = memo(function Cell({
     pressTimer.current = setTimeout(() => {
       pressTimer.current = null;
       didLongPress.current = true;
-      onFlag(i);
+      secondary();
       haptic(14);
     }, 340);
   };
@@ -107,8 +123,6 @@ const Cell = memo(function Cell({
     onActivate(i);
   };
 
-  const revealed = value !== undefined;
-  const exploded = value === -1;
   const showMine = exploded || (mine && !revealed && !flagged);
 
   return (
@@ -149,7 +163,7 @@ const Cell = memo(function Cell({
       onClick={handleClick}
       onContextMenu={(event) => {
         event.preventDefault();
-        if (!disabled && !revealed) onFlag(i);
+        secondary();
       }}
       onDoubleClick={(event) => {
         event.preventDefault();
@@ -187,6 +201,7 @@ export const Board = memo(function Board({
   onReveal,
   onFlag,
   onChord,
+  onFlagChord,
   onCursor,
   recent,
   stale,
@@ -288,6 +303,7 @@ export const Board = memo(function Board({
                   stale={stale === i}
                   onActivate={activate}
                   onFlag={onFlag}
+                  onFlagChord={onFlagChord}
                   onFocus={setFocusIndex}
                   onReveal={onReveal}
                 />

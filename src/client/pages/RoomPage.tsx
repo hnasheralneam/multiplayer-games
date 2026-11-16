@@ -475,6 +475,7 @@ export function RoomPage({ code }: { code: string }) {
           onReveal={(i) => send({ t: 'reveal', i })}
           onFlag={(i) => send({ t: 'flag', i })}
           onChord={(i) => send({ t: 'chord', i })}
+          onFlagChord={(i) => send({ t: 'flagChord', i })}
           onCursor={(x, y) => send({ t: 'cursor', x, y })}
           onEndGame={askEndGame}
         />

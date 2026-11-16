@@ -23,6 +23,7 @@ export interface GameProps {
   onReveal: (i: number) => void;
   onFlag: (i: number) => void;
   onChord: (i: number) => void;
+  onFlagChord: (i: number) => void;
   onCursor: (x: number, y: number) => void;
   onEndGame?: () => void;
 }
@@ -37,6 +38,7 @@ export function Game({
   onReveal,
   onFlag,
   onChord,
+  onFlagChord,
   onCursor,
   onEndGame
 }: GameProps) {
@@ -182,6 +184,7 @@ export function Game({
             onReveal={onReveal}
             onFlag={onFlag}
             onChord={onChord}
+            onFlagChord={onFlagChord}
             onCursor={onCursor}
             recent={recentMap}
             stale={stale?.i ?? null}
@@ -229,7 +232,7 @@ export function Game({
             ? 'Watching this round. You can join when a seat opens.'
             : mode === 'flag'
               ? 'Tap a hidden tile to flag it. Hold to flag from either mode.'
-              : 'Tap to reveal · hold to flag · tap a number to chord.'}
+              : 'Tap to reveal · hold to flag · tap a number to chord · right-click a number to auto-flag.'}
         </p>
         <span className="game-progress" aria-label="Board progress">
           {Math.round((revealed.size / Math.max(1, round.width * round.height)) * 100)}% opened

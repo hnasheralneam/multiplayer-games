@@ -189,6 +189,7 @@ function minesweeperView(
           onReveal={() => undefined}
           onFlag={() => undefined}
           onChord={() => undefined}
+          onFlagChord={() => undefined}
           recent={new Map()}
           stale={null}
           mines={new Set(result.mines ?? [])}
