@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import {
   CODE_ALPHABET,
   CODE_LENGTH,
@@ -14,7 +14,12 @@ import {
   type RoomSettings
 } from '../shared/types';
 import { isMahjongLayout } from '../shared/mahjong';
-import { Room, defaultSettings, hashToken, newToken } from './room';
+import { randInt, setTokenHash } from '../shared/engine/crypto';
+import { Room, defaultSettings, hashToken, newToken } from '../shared/engine/room';
+
+// The engine stores resume tokens hashed. Web Crypto's digest is async, so
+// the server injects its node:crypto SHA-256 here; solo tabs never call this.
+setTokenHash((token) => createHash('sha256').update(token).digest('hex'));
 
 const MAX_ROOMS = 5000;
 const CREATE_LIMIT = 12;
@@ -74,7 +79,7 @@ export class RoomRegistry {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       let candidate = '';
       for (let i = 0; i < CODE_LENGTH; i += 1) {
-        candidate += CODE_ALPHABET[randomInt(0, CODE_ALPHABET.length)];
+        candidate += CODE_ALPHABET[randInt(0, CODE_ALPHABET.length)];
       }
       if (!this.rooms.has(candidate)) {
         code = candidate;

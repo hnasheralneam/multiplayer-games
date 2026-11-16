@@ -25,13 +25,15 @@ export function SettingsSheet({
   onClose,
   settings,
   playerCount,
-  onApply
+  onApply,
+  solo
 }: {
   open: boolean;
   onClose: () => void;
   settings: RoomSettings;
   playerCount: number;
   onApply: (settings: RoomSettings) => void;
+  solo?: boolean;
 }) {
   const [preset, setPreset] = useState<PresetId>(settings.preset);
   const [lives, setLives] = useState(settings.lives);
@@ -214,46 +216,50 @@ export function SettingsSheet({
           </>
         )}
 
-        <section className="settings-section">
-          <div className="settings-label">
-            <span>Seats</span>
-            <span className="settings-hint">At least {lowestSeats} for this table.</span>
-          </div>
-          <div className="seat-options">
-            {Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, index) => index + MIN_PLAYERS).map(
-              (value) => (
-                <button
-                  type="button"
-                  key={value}
-                  className={maxPlayers === value ? 'seat-on' : ''}
-                  disabled={value < lowestSeats}
-                  onClick={() => setMaxPlayers(value)}
-                  aria-pressed={maxPlayers === value}
-                >
-                  {value}
-                </button>
-              )
-            )}
-          </div>
-        </section>
+        {!solo && (
+          <section className="settings-section">
+            <div className="settings-label">
+              <span>Seats</span>
+              <span className="settings-hint">At least {lowestSeats} for this table.</span>
+            </div>
+            <div className="seat-options">
+              {Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, index) => index + MIN_PLAYERS).map(
+                (value) => (
+                  <button
+                    type="button"
+                    key={value}
+                    className={maxPlayers === value ? 'seat-on' : ''}
+                    disabled={value < lowestSeats}
+                    onClick={() => setMaxPlayers(value)}
+                    aria-pressed={maxPlayers === value}
+                  >
+                    {value}
+                  </button>
+                )
+              )}
+            </div>
+          </section>
+        )}
 
-        <section className="settings-section settings-inline">
-          <div>
-            <span className="settings-label-text">Allow late join</span>
-            <span className="settings-hint">
-              Friends can jump into a round that is already running.
-            </span>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={lateJoin}
-            className={`switch ${lateJoin ? 'switch-on' : ''}`}
-            onClick={() => setLateJoin((value) => !value)}
-          >
-            <span />
-          </button>
-        </section>
+        {!solo && (
+          <section className="settings-section settings-inline">
+            <div>
+              <span className="settings-label-text">Allow late join</span>
+              <span className="settings-hint">
+                Friends can jump into a round that is already running.
+              </span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={lateJoin}
+              className={`switch ${lateJoin ? 'switch-on' : ''}`}
+              onClick={() => setLateJoin((value) => !value)}
+            >
+              <span />
+            </button>
+          </section>
+        )}
 
         <div className="settings-actions">
           <button className="button button-ghost" type="button" onClick={onClose}>

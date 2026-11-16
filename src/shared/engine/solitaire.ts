@@ -1,5 +1,5 @@
-import type { KlondikeDraw, SolitaireVariant } from '../shared/types';
-import { type SolitaireState } from '../shared/solitaire';
+import type { KlondikeDraw, SolitaireVariant } from '../types';
+import { type SolitaireState } from '../solitaire';
 import { mulberry32 } from './board';
 
 export {
@@ -21,7 +21,7 @@ export {
   recycleWaste,
   solitaireWon,
   foundationTotal
-} from '../shared/solitaire';
+} from '../solitaire';
 
 function shuffledDeck(seed: number): number[] {
   const deck = Array.from({ length: 52 }, (_, index) => index);

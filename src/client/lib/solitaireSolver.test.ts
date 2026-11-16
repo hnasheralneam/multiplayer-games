@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dealSolitaire, type SolitaireState } from '../../server/solitaire';
+import { dealSolitaire, type SolitaireState } from '../../shared/engine/solitaire';
 import { solveSolitaire } from './solitaireSolver';
 import { autoPlaySafe, playMove } from '../../shared/solitaire';
 import type { SolitaireSlot } from '../../shared/types';

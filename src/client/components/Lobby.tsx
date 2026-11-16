@@ -32,7 +32,8 @@ export function Lobby({
   onStart,
   onSettings,
   onProfile,
-  onSettingsChange
+  onSettingsChange,
+  solo
 }: {
   room: PublicRoom;
   you: You;
@@ -41,6 +42,7 @@ export function Lobby({
   onSettings: () => void;
   onProfile: () => void;
   onSettingsChange: (settings: RoomSettings) => void;
+  solo?: boolean;
 }) {
   const [mobileTab, setMobileTab] = useState<MobileTab>('players');
 
@@ -48,7 +50,7 @@ export function Lobby({
   const host = room.players.find((player) => player.isHost);
   const roomName = host ? `${host.name}'s room` : `Room ${room.code}`;
   const openSeats = Math.max(0, room.settings.maxPlayers - room.players.length);
-  const emptyShown = Math.min(openSeats, 2);
+  const emptyShown = solo ? 0 : Math.min(openSeats, 2);
   const game = room.settings.game;
   const sudoku = game === 'sudoku';
   const solitaire = isSolitaireVariant(game);
@@ -160,7 +162,7 @@ export function Lobby({
 
   const tabs: Array<{ id: MobileTab; label: string }> = [
     { id: 'players', label: 'Players' },
-    { id: 'invite', label: 'Invite' },
+    ...(solo ? [] : [{ id: 'invite', label: 'Invite' } as const]),
     { id: 'game', label: 'Game' }
   ];
 
@@ -255,9 +257,11 @@ export function Lobby({
             </div>
           </section>
 
-          <div className="lobby-pane-invite">
-            <InvitePanel room={room} />
-          </div>
+          {!solo && (
+            <div className="lobby-pane-invite">
+              <InvitePanel room={room} />
+            </div>
+          )}
         </div>
 
         <aside className="lobby-side lobby-pane-game">
@@ -360,28 +364,30 @@ export function Lobby({
                     </div>
                   ) : null}
 
-                  <div className="quick-setting quick-setting-row">
-                    <span className="quick-setting-label">Seats</span>
-                    <div className="seat-stepper" role="group" aria-label="Seat count">
-                      <button
-                        type="button"
-                        onClick={() => changeSeats(room.settings.maxPlayers - 1)}
-                        disabled={!connected || room.settings.maxPlayers <= fewestSeats}
-                        aria-label="Fewer seats"
-                      >
-                        −
-                      </button>
-                      <span>{room.settings.maxPlayers}</span>
-                      <button
-                        type="button"
-                        onClick={() => changeSeats(room.settings.maxPlayers + 1)}
-                        disabled={!connected || room.settings.maxPlayers >= 8}
-                        aria-label="More seats"
-                      >
-                        +
-                      </button>
+                  {!solo && (
+                    <div className="quick-setting quick-setting-row">
+                      <span className="quick-setting-label">Seats</span>
+                      <div className="seat-stepper" role="group" aria-label="Seat count">
+                        <button
+                          type="button"
+                          onClick={() => changeSeats(room.settings.maxPlayers - 1)}
+                          disabled={!connected || room.settings.maxPlayers <= fewestSeats}
+                          aria-label="Fewer seats"
+                        >
+                          −
+                        </button>
+                        <span>{room.settings.maxPlayers}</span>
+                        <button
+                          type="button"
+                          onClick={() => changeSeats(room.settings.maxPlayers + 1)}
+                          disabled={!connected || room.settings.maxPlayers >= 8}
+                          aria-label="More seats"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <p className="game-spec">{spec}</p>

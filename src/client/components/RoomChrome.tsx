@@ -16,7 +16,8 @@ export function RoomChrome({
   onCopyCode,
   onLeave,
   onCloseRoom,
-  onReturnLobby
+  onReturnLobby,
+  solo
 }: {
   code: string;
   status: RoomStatus;
@@ -31,6 +32,7 @@ export function RoomChrome({
   onLeave: () => void;
   onCloseRoom: () => void;
   onReturnLobby: () => void;
+  solo?: boolean;
 }) {
   const live = status === 'playing';
 
@@ -49,9 +51,11 @@ export function RoomChrome({
           {live && <span className="live-dot" />}
           {statusLabel(status)}
         </StatusPill>
-        <span className="room-player-count">
-          <IconUsers size={14} /> {count}/{max}
-        </span>
+        {!solo && (
+          <span className="room-player-count">
+            <IconUsers size={14} /> {count}/{max}
+          </span>
+        )}
       </div>
 
       <div className="room-bar-actions">
@@ -79,7 +83,7 @@ export function RoomChrome({
             <button type="button" role="menuitem" onClick={onLeave}>
               Leave room
             </button>
-            {isHost && (
+            {isHost && !solo && (
               <button type="button" role="menuitem" className="menu-danger" onClick={onCloseRoom}>
                 Close room for everyone
               </button>

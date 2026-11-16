@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { GAME_META, GAME_ORDER, extractCode, type GameKind } from '../../shared/types';
 import { createRoom } from '../lib/api';
-import { loadProfile, saveProfile, saveToken, touchRecent } from '../lib/storage';
+import { makeSoloCode } from '../lib/solo';
+import { loadProfile, saveProfile, saveSoloRoom, saveToken, touchRecent } from '../lib/storage';
 import { navigate, Link } from '../lib/router';
-import { IconArrow, IconFlag, IconMine, IconPlus, IconUsers } from '../components/icons';
+import { IconArrow, IconEye, IconFlag, IconMine, IconPlus, IconUsers } from '../components/icons';
 import { GameIcon } from '../components/GameIcon';
 import { Logo, Spinner, ThemeToggle } from '../components/ui';
 
@@ -70,6 +71,15 @@ export function Home() {
     }
   };
 
+  const playAlone = (game: GameKind = 'minesweeper') => {
+    const profile = loadProfile();
+    saveProfile(profile);
+    const soloCode = makeSoloCode();
+    saveSoloRoom(soloCode, game);
+    touchRecent(soloCode, `${GAME_META[game].label} — alone`);
+    navigate(`/r/${soloCode}`);
+  };
+
   const join = (event: FormEvent) => {
     event.preventDefault();
     const normalized = extractCode(code);
@@ -108,6 +118,15 @@ export function Home() {
               >
                 {creating === 'group' ? <Spinner label="Creating room" /> : <IconPlus size={20} />}
                 {creating === 'group' ? 'Making a room…' : 'Create a room'}
+              </button>
+              <button
+                className="button button-secondary button-xl"
+                onClick={() => playAlone()}
+                disabled={Boolean(creating)}
+                title="An instant offline room. Nothing leaves this tab."
+              >
+                <IconEye size={18} />
+                Play alone
               </button>
             </div>
             <form className="quick-join" onSubmit={join}>

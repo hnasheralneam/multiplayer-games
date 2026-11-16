@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SUDOKU_DIFFICULTY_IDS } from '../shared/types';
+import { SUDOKU_DIFFICULTY_IDS } from '../types';
 import { countSolutions, generateSudoku, isSudokuSolved } from './sudoku';
 
 describe('sudoku', () => {

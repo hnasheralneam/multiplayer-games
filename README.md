@@ -30,6 +30,7 @@ The link is the product: create a room, show the QR or say the code, and everyon
 - **Join first, name later.** Opening a room link takes a seat immediately with a generated name and avatar. The lobby has a visible **Change name & icon** control, so nobody has to fill in a form before getting to the table.
 - **No chat.** You are in the same room. The UI stays quiet: cursors, reveal rings, hearts, and a countdown. Voice does the rest.
 - **Four-character rooms.** `K7QP` is easy to say across a table and easy to type. The alphabet skips vowels and `0/O/1/I/L` so there are no accidental words or ambiguous characters.
+- **Play alone.** Want the table to yourself? Solo rooms run the same engine inside your tab: instant start, no socket, no API calls, and they work even when the room server is unreachable.
 - **One link for the whole session.** Lobby, game, results, and the next game all live at `/r/K7QP`. Copying the address bar always copies a working invite.
 - **Node.js on the server.** One process serves the client, the HTTP API, the WebSocket stream, and the OG preview tags. Rooms live in memory.
 
@@ -37,6 +38,7 @@ The link is the product: create a room, show the QR or say the code, and everyon
 
 - **Client:** React 19, TypeScript, Vite, plain CSS, `qrcode` for the invite QR.
 - **Server:** Node.js 22, Fastify 5, `@fastify/websocket` (ws), Zod for message validation.
+- **One engine, two homes:** the room and game logic (`src/shared/engine/`) is transport-agnostic and runs inside the server for multiplayer rooms and inside the browser for solo rooms. There is a single implementation of every rule.
 - **No database:** rooms are ephemeral. A server restart closes live rooms; start a new one.
 - **No accounts:** guests get a random name, an avatar, a color, and a per-room resume token in `localStorage`.
 
@@ -57,6 +59,16 @@ npm start
 ```
 
 Open <http://localhost:3000>.
+
+## Playing alone
+
+The home page has a **Play alone** button. It opens a room like any other — same lobby, same five games, same codes — except the room lives entirely inside your browser tab: the game engine is called directly instead of over the network.
+
+- **Instant, silent start.** No `POST /api/rooms`, no WebSocket, no waiting. The lobby appears as soon as the button is tapped, and every action is a local function call.
+- **Same rules.** Solo rooms run the exact engine that servers run (`src/shared/engine/`), so deals, first-click safety, and validation are identical.
+- **Where the flag lives.** Solo state is per-browser: an `ms:solo:<CODE>` entry in `localStorage` marks the code, and only this device knows it is a solo room. Opening that code elsewhere (or after clearing storage) treats it as a normal room code.
+- **Reloading.** A refresh rebuilds the room: same code, fresh table. There is no server to resume the game from.
+- **Switching games.** You are the host, so the lobby's game switcher and settings work as usual. Seat and late-join controls are hidden because nobody else is invited.
 
 ## Playing in person on a LAN
 
@@ -100,7 +112,7 @@ The first click is always safe: mines are placed after that click, excluding the
 - The flag counter counts flags placed **plus mines that were accidentally hit**, so a triggered mine still counts as an accounted-for mine.
 - Tap/click a hidden tile to reveal it.
 - Long-press on touch, right-click on desktop, or switch to **Flag** mode to place a flag.
-- Tap a revealed number whose flags match its count to chord (reveal all remaining neighbours).
+- Tap a revealed number whose mines match its count to chord (reveal all remaining neighbours). A mine that was already uncovered by accident counts toward that number just like a flag, so a chord still goes through once every mine around it is either flagged or already sitting open.
 - Desktop keyboard: arrows move, Space/Enter reveals or chords, `F` flags.
 - Shared lives: every mine costs the table one heart. At zero the round ends and all mines are shown.
 - Board presets: Cozy 9×9/10, Classic 16×16/40, Big 30×16/99. Hosts can change the board size and seat count directly in the lobby; the settings sheet handles lives and late join.

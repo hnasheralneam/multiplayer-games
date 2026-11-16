@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
-import type { WebSocket } from 'ws';
-import type { ServerMessage } from '../shared/types';
+import type { ServerMessage } from '../types';
 import type { Client } from './client';
-import type { RoomSettings } from '../shared/types';
-import { freeTileIndices, tilesMatch } from '../shared/mahjong';
+import type { RoomSettings } from '../types';
+import { freeTileIndices, tilesMatch } from '../mahjong';
+import { newId } from './crypto';
 import { Room, defaultSettings, hashToken } from './room';
 
 interface TestClient extends Client {
@@ -14,10 +13,7 @@ interface TestClient extends Client {
 function testClient(): TestClient {
   const messages: ServerMessage[] = [];
   return {
-    id: randomUUID(),
-    ip: '127.0.0.1',
-    socket: { readyState: 1 } as WebSocket,
-    joinedAt: Date.now(),
+    id: newId(),
     messages,
     send(message: ServerMessage) {
       messages.push(message);
@@ -254,6 +250,29 @@ describe('room flow', () => {
     room.handleMessage(host, { t: 'flagChord', i: 14 });
     expect(room.round?.flags.has(3)).toBe(false);
     expect(room.round?.flags.size).toBe(1);
+  });
+
+  it('counts an already uncovered mine as flagged when chording', () => {
+    const { room, host } = startedMineRound(42);
+    room.handleMessage(host, { t: 'reveal', i: 61 });
+    vi.advanceTimersByTime(60);
+    expect(room.round?.revealed.get(61)).toBe(-1);
+    expect(room.round?.lives).toBe(2);
+    room.handleMessage(host, { t: 'chord', i: 60 });
+    expect(room.round?.revealed.get(70)).toBe(1);
+  });
+
+  it('still refuses a chord while another mine around the number is hidden', () => {
+    const { room, host } = startedMineRound(42);
+    room.handleMessage(host, { t: 'reveal', i: 61 });
+    vi.advanceTimersByTime(60);
+    room.handleMessage(host, { t: 'chord', i: 69 });
+    expect(room.round?.revealed.has(78)).toBe(false);
+    vi.advanceTimersByTime(60);
+    room.handleMessage(host, { t: 'flag', i: 77 });
+    vi.advanceTimersByTime(60);
+    room.handleMessage(host, { t: 'chord', i: 69 });
+    expect(room.round?.revealed.get(78)).toBeDefined();
   });
 
   it('runs a shared Sudoku and returns everyone to the lobby', () => {

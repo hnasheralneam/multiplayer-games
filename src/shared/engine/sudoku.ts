@@ -1,5 +1,5 @@
-import { randomInt } from 'node:crypto';
-import { SUDOKU_DIFFICULTIES, type SudokuDifficulty } from '../shared/types';
+import { randInt } from './crypto';
+import { SUDOKU_DIFFICULTIES, type SudokuDifficulty } from '../types';
 import { mulberry32 } from './board';
 
 export interface SudokuPuzzle {
@@ -128,7 +128,7 @@ export function countSolutions(
 
 export function generateSudoku(
   difficulty: SudokuDifficulty,
-  seed = randomInt(0, 2 ** 31 - 1)
+  seed = randInt(0, 2 ** 31 - 1)
 ): SudokuPuzzle {
   const random = mulberry32(seed);
   const solution = fullSolution(random);

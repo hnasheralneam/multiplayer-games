@@ -4,7 +4,7 @@ import {
   isTileFree,
   mahjongTileGroups,
   tilesMatch
-} from '../shared/mahjong';
+} from '../mahjong';
 import {
   dealMahjong,
   dealMahjongTraced,

@@ -1,4 +1,4 @@
-import { AVATARS, isAvatar, type Avatar } from '../../shared/types';
+import { AVATARS, isAvatar, isGameKind, type Avatar, type GameKind } from '../../shared/types';
 import { randomName } from '../../shared/names';
 
 export interface Profile {
@@ -15,6 +15,32 @@ export interface RecentRoom {
 const PROFILE_KEY = 'ms:profile';
 const RECENT_KEY = 'ms:recent';
 const SOUND_KEY = 'ms:sound';
+const SOLO_PREFIX = 'ms:solo:';
+
+/** A room that lives only in this tab — the game engine runs client-side. */
+export interface SoloRoom {
+  game: GameKind;
+  at: number;
+}
+
+export function saveSoloRoom(code: string, game: GameKind): void {
+  write(SOLO_PREFIX + code, JSON.stringify({ game, at: Date.now() }));
+}
+
+export function loadSoloRoom(code: string): SoloRoom | null {
+  const raw = read(SOLO_PREFIX + code);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<SoloRoom>;
+    if (parsed.game && isGameKind(parsed.game)) return { game: parsed.game, at: parsed.at ?? 0 };
+  } catch {
+  }
+  return null;
+}
+
+export function clearSoloRoom(code: string): void {
+  write(SOLO_PREFIX + code, null);
+}
 
 function read(key: string): string | null {
   try {

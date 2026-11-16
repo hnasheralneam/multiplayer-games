@@ -39,6 +39,7 @@ interface ResultsProps {
   onLobby: () => void;
   onInvite: () => void;
   onLeave: () => void;
+  solo?: boolean;
 }
 
 interface StatRowView {
@@ -358,7 +359,8 @@ function ResultsCard({
   view,
   onLobby,
   onInvite,
-  onLeave
+  onLeave,
+  solo
 }: ResultsProps & { view: ResultView }) {
   const [copied, setCopied] = useState(false);
   const [showBoard, setShowBoard] = useState(false);
@@ -449,9 +451,11 @@ function ResultsCard({
             Room <strong>{room.code}</strong> stays open. Same table, next game.
           </span>
           <span className="results-foot-actions">
-            <button className="text-button" onClick={onInvite}>
-              <IconShare size={14} /> Invite someone
-            </button>
+            {!solo && (
+              <button className="text-button" onClick={onInvite}>
+                <IconShare size={14} /> Invite someone
+              </button>
+            )}
             <button className="text-button" onClick={onLeave}>
               Leave
             </button>
@@ -468,7 +472,7 @@ function ResultsCard({
   );
 }
 
-export function Results({ room, you, connected, serverOffset, onLobby, onInvite, onLeave }: ResultsProps) {
+export function Results({ room, you, connected, serverOffset, onLobby, onInvite, onLeave, solo }: ResultsProps) {
   const result = room.lastResult;
 
   const view = useMemo<ResultView | null>(() => {
@@ -504,6 +508,7 @@ export function Results({ room, you, connected, serverOffset, onLobby, onInvite,
       onLobby={onLobby}
       onInvite={onInvite}
       onLeave={onLeave}
+      solo={solo}
     />
   );
 }

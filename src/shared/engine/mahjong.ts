@@ -6,7 +6,7 @@ import {
   matchGroup,
   tilesMatch,
   type MahjongLayout
-} from '../shared/mahjong';
+} from '../mahjong';
 import { mulberry32 } from './board';
 
 export interface MahjongState {

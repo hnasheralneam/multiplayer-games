@@ -1,4 +1,4 @@
-import type { PublicCell } from '../shared/types';
+import type { PublicCell } from '../types';
 
 export function toIndex(x: number, y: number, width: number): number {
   return y * width + x;
@@ -73,6 +73,18 @@ export interface RevealState {
   mines: Set<number>;
   revealed: Map<number, number>;
   flags: Map<number, string>;
+}
+
+/**
+ * A mine that was already uncovered by accident counts the same as a flagged
+ * one: it satisfies part of a number, so chords can clear the rest.
+ */
+export function mineAccounted(
+  i: number,
+  revealed: Map<number, number>,
+  flags: Map<number, string>
+): boolean {
+  return flags.has(i) || revealed.get(i) === -1;
 }
 
 export interface RevealOutcome {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GAME_META,
   type PublicRoom,
@@ -13,6 +13,7 @@ import { navigate, Link } from '../lib/router';
 import {
   clearToken,
   loadProfile,
+  loadSoloRoom,
   removeRecent,
   saveProfile,
   saveToken,
@@ -20,6 +21,7 @@ import {
   type Profile
 } from '../lib/storage';
 import { useRoomSocket } from '../lib/useRoomSocket';
+import { useRoomLocal } from '../lib/useRoomLocal';
 import { Countdown } from '../components/Countdown';
 import { Game } from '../components/Game';
 import { InvitePanel } from '../components/InvitePanel';
@@ -154,9 +156,10 @@ function ConnectionBanner({ connection }: { connection: string }) {
 }
 
 export function RoomPage({ code }: { code: string }) {
+  const solo = useMemo(() => loadSoloRoom(code), [code]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewState, setPreviewState] = useState<'loading' | 'ready' | 'missing' | 'error'>(
-    'loading'
+    () => (solo ? 'ready' : 'loading')
   );
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -178,7 +181,9 @@ export function RoomPage({ code }: { code: string }) {
   const recentTracked = useRef(false);
 
   const online = useOnline();
-  const { state, connect, send, disconnect } = useRoomSocket(code);
+  const socketTransport = useRoomSocket(code);
+  const localTransport = useRoomLocal(code, solo);
+  const { state, connect, send, disconnect } = solo ? localTransport : socketTransport;
   const room = state.room;
   const you = state.you;
   const isHost = Boolean(room && you && room.hostId === you.id);
@@ -196,6 +201,7 @@ export function RoomPage({ code }: { code: string }) {
   }, []);
 
   useEffect(() => {
+    if (solo) return;
     let cancelled = false;
     setPreviewState('loading');
     setPreviewMessage(null);
@@ -221,7 +227,7 @@ export function RoomPage({ code }: { code: string }) {
     return () => {
       cancelled = true;
     };
-  }, [code, reloadKey]);
+  }, [code, reloadKey, solo]);
 
   useEffect(() => {
     if (previewState !== 'ready' || autoJoined.current) return;
@@ -409,6 +415,7 @@ export function RoomPage({ code }: { code: string }) {
           onSettings={() => setSettingsOpen(true)}
           onProfile={() => setProfileOpen(true)}
           onSettingsChange={applySettings}
+          solo={Boolean(solo)}
         />
       ) : room.status === 'countdown' ? (
         <Countdown
@@ -426,6 +433,7 @@ export function RoomPage({ code }: { code: string }) {
           onLobby={() => send({ t: 'lobby' })}
           onInvite={() => setInviteOpen(true)}
           onLeave={leave}
+          solo={Boolean(solo)}
         />
       ) : room.settings.game === 'sudoku' && room.sudoku ? (
         <SudokuGame
@@ -506,9 +514,10 @@ export function RoomPage({ code }: { code: string }) {
             setMenuOpen(false);
             send({ t: 'lobby' });
           }}
+          solo={Boolean(solo)}
         />
 
-        {!online && (
+        {!online && !solo && (
           <div className="offline-banner" role="alert">
             You're offline. The board is safe — we'll reconnect you.
           </div>
@@ -549,6 +558,7 @@ export function RoomPage({ code }: { code: string }) {
           settings={room.settings}
           playerCount={room.players.length}
           onApply={applySettings}
+          solo={Boolean(solo)}
         />
 
         <ProfileModal

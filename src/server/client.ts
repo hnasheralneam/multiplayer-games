@@ -1,14 +1,9 @@
 import type { WebSocket } from 'ws';
-import type { ServerMessage } from '../shared/types';
+import type { Client as EngineClient } from '../shared/engine/client';
 
-export interface Client {
-  id: string;
+/** A WebSocket connection. The engine only sees the EngineClient half. */
+export interface Client extends EngineClient {
   ip: string;
   socket: WebSocket;
-  roomCode?: string;
-  playerId?: string;
-  role?: 'player' | 'spectator';
   joinedAt: number;
-  send(message: ServerMessage): void;
-  close(code?: number, reason?: string): void;
 }

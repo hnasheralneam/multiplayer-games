@@ -1,5 +1,7 @@
-import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { hashToken, newId, newToken, randInt } from './crypto';
 import type { Client } from './client';
+
+export { hashToken, newToken } from './crypto';
 import {
   AVATARS,
   GAME_KINDS,
@@ -38,10 +40,11 @@ import {
   type SudokuPlayerStats,
   type SudokuResult,
   type You
-} from '../shared/types';
-import { randomName } from '../shared/names';
-import { isMahjongLayout, isTileFree } from '../shared/mahjong';
+} from '../types';
+import { randomName } from '../names';
+import { isMahjongLayout, isTileFree } from '../mahjong';
 import {
+  mineAccounted,
   neighbors,
   placeMines,
   revealFrom,
@@ -149,14 +152,6 @@ interface Round {
   flags: Map<number, string>;
   firstClickDone: boolean;
   stats: Map<string, RoundStats>;
-}
-
-export function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
-export function newToken(): string {
-  return randomBytes(24).toString('base64url');
 }
 
 export function defaultSettings(): RoomSettings {
@@ -421,7 +416,7 @@ export class Room {
       const candidate = `${base.slice(0, 16 - suffix.length)}${suffix}`;
       if (!taken.has(candidate.toLowerCase())) return candidate;
     }
-    return base.slice(0, 12) + randomInt(10, 99);
+    return base.slice(0, 12) + randInt(10, 99);
   }
 
   private colorForSeat(): string {
@@ -499,11 +494,11 @@ export class Room {
     const playerToken = isPendingHost && token ? token : newToken();
     const playerTokenHash = isPendingHost && tokenHash ? tokenHash : hashToken(playerToken);
     const player: Player = {
-      id: randomUUID(),
+      id: newId(),
       name: this.uniqueName(message.name ?? ''),
       avatar: (message.avatar && (AVATARS as readonly string[]).includes(message.avatar)
         ? message.avatar
-        : AVATARS[randomInt(0, AVATARS.length)]) as Avatar,
+        : AVATARS[randInt(0, AVATARS.length)]) as Avatar,
       color: this.colorForSeat(),
       tokenHash: playerTokenHash,
       client,
@@ -726,7 +721,7 @@ export class Room {
     if (this.settings.game === 'sudoku') {
       const puzzle = generateSudoku(this.settings.sudokuDifficulty);
       this.sudoku = {
-        id: randomUUID(),
+        id: newId(),
         startedAt: now,
         difficulty: this.settings.sudokuDifficulty,
         givens: puzzle.givens,
@@ -740,11 +735,11 @@ export class Room {
       this.solitaire = null;
     } else if (isSolitaireVariant(this.settings.game)) {
       this.solitaire = {
-        id: randomUUID(),
+        id: newId(),
         startedAt: now,
         state: dealSolitaire(
           this.settings.game,
-          randomInt(0, 2 ** 31 - 1),
+          randInt(0, 2 ** 31 - 1),
           this.settings.klondikeDraw
         ),
         moves: 0,
@@ -755,9 +750,9 @@ export class Room {
       this.mahjong = null;
     } else if (this.settings.game === 'mahjong') {
       this.mahjong = {
-        id: randomUUID(),
+        id: newId(),
         startedAt: now,
-        state: dealMahjong(this.settings.mahjongLayout, randomInt(0, 2 ** 31 - 1)),
+        state: dealMahjong(this.settings.mahjongLayout, randInt(0, 2 ** 31 - 1)),
         moves: 0,
         stats: new Map([...this.players.keys()].map((id) => [id, 0] as const)),
         selections: new Map()
@@ -768,8 +763,8 @@ export class Room {
     } else {
       const { width, height, mines, lives } = this.settings;
       this.round = {
-        id: randomUUID(),
-        seed: randomInt(0, 2 ** 31 - 1),
+        id: newId(),
+        seed: randInt(0, 2 ** 31 - 1),
         startedAt: now,
         width,
         height,
@@ -930,8 +925,8 @@ export class Room {
     const n = round.revealed.get(i);
     if (n === undefined || n <= 0) return;
     const around = neighbors(i, round.width, round.height);
-    const flagged = around.filter((index) => round.flags.has(index)).length;
-    if (flagged !== n) return;
+    const accounted = around.filter((index) => mineAccounted(index, round.revealed, round.flags)).length;
+    if (accounted !== n) return;
 
     const cells: PublicCell[] = [];
     let mineHits = 0;
@@ -998,9 +993,9 @@ export class Room {
     const n = round.revealed.get(i);
     if (n === undefined) return;
     const around = neighbors(i, round.width, round.height);
-    const flagged = around.filter((index) => round.flags.has(index)).length;
+    const accounted = around.filter((index) => mineAccounted(index, round.revealed, round.flags)).length;
     const hidden = around.filter((index) => !round.revealed.has(index) && !round.flags.has(index));
-    if (hidden.length === 0 || n - flagged !== hidden.length) return;
+    if (hidden.length === 0 || n - accounted !== hidden.length) return;
 
     for (const index of hidden) {
       round.flags.set(index, player.id);
@@ -1260,7 +1255,7 @@ export class Room {
     const state = mahjong.state;
     if (message.action === 'shuffle') {
       // The server only allows a shuffle when the table is out of matches.
-      if (!shuffleRemaining(state, randomInt(0, 2 ** 31 - 1))) return;
+      if (!shuffleRemaining(state, randInt(0, 2 ** 31 - 1))) return;
       this.touch();
       this.broadcastRoom();
       return;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardRank, cardSuit, type SolitaireSlot } from '../shared/types';
+import { cardRank, cardSuit, type SolitaireSlot } from '../types';
 import {
   autoMove,
   dealSolitaire,
