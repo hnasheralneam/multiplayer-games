@@ -24,6 +24,7 @@ import { useRoomSocket } from '../lib/useRoomSocket';
 import { useRoomLocal } from '../lib/useRoomLocal';
 import { Countdown } from '../components/Countdown';
 import { Game } from '../components/Game';
+import { HudSlotContext } from '../components/GameHud';
 import { InvitePanel } from '../components/InvitePanel';
 import { Lobby } from '../components/Lobby';
 import { MahjongGame } from '../components/MahjongGame';
@@ -173,6 +174,7 @@ export function RoomPage({ code }: { code: string }) {
   const [endOpen, setEndOpen] = useState(false);
   const [localToast, setLocalToast] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [hudSlot, setHudSlot] = useState<HTMLDivElement | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const autoJoined = useRef(false);
@@ -397,9 +399,10 @@ export function RoomPage({ code }: { code: string }) {
   if (room && you) {
     const spectator = you.role === 'spectator';
     const wideBoard =
-      room.status !== 'lobby' &&
-      room.settings.game === 'minesweeper' &&
-      room.settings.width > room.settings.height * 1.5;
+      (room.status !== 'lobby' &&
+        room.settings.game === 'minesweeper' &&
+        room.settings.width > room.settings.height * 1.5) ||
+      (room.status !== 'lobby' && room.solitaire !== null);
     const canTakeSeat =
       spectator &&
       room.players.length < room.settings.maxPlayers &&
@@ -515,6 +518,7 @@ export function RoomPage({ code }: { code: string }) {
             send({ t: 'lobby' });
           }}
           solo={Boolean(solo)}
+          hudSlotRef={setHudSlot}
         />
 
         {!online && !solo && (
@@ -546,7 +550,9 @@ export function RoomPage({ code }: { code: string }) {
           </div>
         )}
 
-        <main className={`room-main ${wideBoard ? 'room-main-wide' : ''}`}>{content}</main>
+        <main className={`room-main ${wideBoard ? 'room-main-wide' : ''}`}>
+          <HudSlotContext.Provider value={hudSlot}>{content}</HudSlotContext.Provider>
+        </main>
 
         <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite players" wide>
           <InvitePanel room={room} />

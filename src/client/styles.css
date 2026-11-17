@@ -1276,8 +1276,8 @@ body.modal-open {
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
+  gap: 14px;
+  padding: 9px 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
@@ -1326,6 +1326,8 @@ body.modal-open {
   margin-left: auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
 }
@@ -2062,15 +2064,28 @@ body.modal-open {
   max-width: none;
 }
 
-.game-hud {
+.room-main-wide .solitaire-game {
+  max-width: none;
+}
+
+/* the game HUD slots into the room top bar (see GameHud.tsx) */
+.room-bar-hud {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  min-width: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .room-bar-hud {
+    gap: 10px;
+  }
+
+  .hud-mode {
+    display: none;
+  }
 }
 
 .hud-side {
@@ -2924,7 +2939,7 @@ body.modal-open {
 }
 
 .solitaire-board {
-  --card-w: clamp(38px, 5.4vw, 82px);
+  --card-w: clamp(38px, 6.5vw, 100px);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -2937,7 +2952,7 @@ body.modal-open {
 }
 
 .solitaire-board-freecell {
-  --card-w: clamp(34px, 4.8vw, 72px);
+  --card-w: clamp(34px, 5.8vw, 84px);
   min-width: 480px;
 }
 

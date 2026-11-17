@@ -102,6 +102,26 @@ describe('room flow', () => {
     expect(guest.messages.some((message) => message.t === 'cells')).toBe(true);
   });
 
+  it('skips the countdown for solo rooms', () => {
+    const room = new Room(
+      'K7QP',
+      { ...defaultSettings(), preset: 'cozy', width: 9, height: 9, mines: 10, lives: 3 },
+      null,
+      () => undefined,
+      { solo: true }
+    );
+    const host = testClient();
+    room.handleJoin(host, { t: 'join', code: 'K7QP', name: 'Maya', avatar: '🦊' });
+
+    room.handleMessage(host, { t: 'start' });
+    expect(room.status).toBe('playing');
+    expect(room.round?.revealed.size).toBe(0);
+    expect(room.countdownEndsAt).toBeUndefined();
+
+    vi.advanceTimersByTime(10_000);
+    expect(room.status).toBe('playing');
+  });
+
   it('keeps a two-seat room waiting for the second player', () => {
     const room = makeRoom({ maxPlayers: 2 });
     const host = testClient();

@@ -1,6 +1,5 @@
 import type { RoomStatus } from '../../shared/types';
-import { statusLabel } from '../lib/format';
-import { Logo, StatusPill, ThemeToggle } from './ui';
+import { Logo, ThemeToggle } from './ui';
 import { IconCopy, IconGear, IconUsers, IconX } from './icons';
 
 export function RoomChrome({
@@ -17,7 +16,8 @@ export function RoomChrome({
   onLeave,
   onCloseRoom,
   onReturnLobby,
-  solo
+  solo,
+  hudSlotRef
 }: {
   code: string;
   status: RoomStatus;
@@ -33,9 +33,8 @@ export function RoomChrome({
   onCloseRoom: () => void;
   onReturnLobby: () => void;
   solo?: boolean;
+  hudSlotRef?: (el: HTMLDivElement | null) => void;
 }) {
-  const live = status === 'playing';
-
   return (
     <header className="room-bar">
       <Logo small />
@@ -47,10 +46,7 @@ export function RoomChrome({
       </button>
 
       <div className="room-bar-middle">
-        <StatusPill tone={live ? 'live' : status === 'results' ? 'warm' : 'neutral'}>
-          {live && <span className="live-dot" />}
-          {statusLabel(status)}
-        </StatusPill>
+        <div className="room-bar-hud" ref={hudSlotRef} />
         {!solo && (
           <span className="room-player-count">
             <IconUsers size={14} /> {count}/{max}

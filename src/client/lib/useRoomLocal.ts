@@ -83,7 +83,7 @@ export function useRoomLocal(code: string, solo: SoloRoom | null) {
       if (!roomRef.current) {
         const settings = defaultSettings();
         if (solo?.game) settings.game = solo.game;
-        roomRef.current = new Room(code, settings, null, () => undefined);
+        roomRef.current = new Room(code, settings, null, () => undefined, { solo: true });
         clientRef.current = {
           id: newId(),
           send: (message) => deliverRef.current(message),

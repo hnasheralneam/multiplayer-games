@@ -213,15 +213,19 @@ export class Room {
     code: string,
     settings: RoomSettings,
     pendingHostHash: string | null,
-    onDestroy: (code: string) => void
+    onDestroy: (code: string) => void,
+    opts: { solo?: boolean } = {}
   ) {
     this.code = code;
     this.settings = settings;
     this.pendingHostHash = pendingHostHash;
     this.onDestroy = onDestroy;
+    this.solo = Boolean(opts.solo);
     this.createdAt = Date.now();
     this.lastActivity = this.createdAt;
   }
+
+  private readonly solo: boolean;
 
   private touch(): void {
     this.lastActivity = Date.now();
@@ -706,6 +710,11 @@ export class Room {
     }
     if (this.settings.maxPlayers === 2 && this.connectedPlayers() < 2) {
       this.error(client, 'bad_message', 'A two-seat room needs both players.');
+      return;
+    }
+    if (this.solo) {
+      this.status = 'countdown';
+      this.beginRound();
       return;
     }
     if (this.countdownTimer) clearTimeout(this.countdownTimer);

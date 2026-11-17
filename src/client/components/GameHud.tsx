@@ -1,6 +1,13 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { formatClock } from '../lib/format';
 import { IconClock, IconX } from './icons';
+
+/**
+ * The top bar in RoomChrome owns a slot element; every game renders its HUD
+ * through <GameHud>, which lands inside that slot and so becomes one bar.
+ */
+export const HudSlotContext = createContext<HTMLElement | null>(null);
 
 export function GameHud({
   left,
@@ -11,12 +18,15 @@ export function GameHud({
   center?: ReactNode;
   right?: ReactNode;
 }) {
-  return (
-    <div className="game-hud">
+  const slot = useContext(HudSlotContext);
+  if (!slot) return null;
+  return createPortal(
+    <>
       <div className="hud-side">{left}</div>
       <div className="hud-center">{center}</div>
       <div className="hud-side hud-right">{right}</div>
-    </div>
+    </>,
+    slot
   );
 }
 
