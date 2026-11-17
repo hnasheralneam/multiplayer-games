@@ -7,7 +7,7 @@ const settings = z.object({
   lives: z.number().int().min(1).max(5),
   maxPlayers: z.number().int().min(2).max(8),
   lateJoin: z.boolean(),
-  sudokuDifficulty: z.enum(['easy', 'medium', 'hard']),
+  sudokuDifficulty: z.enum(['easy', 'medium', 'hard', 'extra']),
   klondikeDraw: z.union([z.literal(1), z.literal(3)]),
   mahjongLayout: z.enum(['turtle', 'pyramid', 'cozy'])
 });

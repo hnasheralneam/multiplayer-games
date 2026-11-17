@@ -3,6 +3,9 @@ import {
   cardSuitIndex,
   isRedCard,
   type KlondikeDraw,
+  type PublicSolitaire,
+  type SolitaireCardLocation,
+  type SolitaireCardMove,
   type SolitaireSlot,
   type SolitaireVariant
 } from './types';
@@ -259,4 +262,108 @@ export function solitaireWon(state: SolitaireState): boolean {
 
 export function foundationTotal(state: SolitaireState): number {
   return state.foundations.reduce((total, pile) => total + pile.length, 0);
+}
+
+/** Where every card sits, keyed by card id. */
+export function cardLocations(state: SolitaireState): Map<number, SolitaireCardLocation> {
+  const locations = new Map<number, SolitaireCardLocation>();
+  state.stock.forEach((card, position) => locations.set(card, { zone: 'stock', index: 0, position }));
+  state.waste.forEach((card, position) => locations.set(card, { zone: 'waste', index: 0, position }));
+  state.tableau.forEach((column, index) => {
+    column.forEach((card, position) => locations.set(card, { zone: 'tableau', index, position }));
+  });
+  state.foundations.forEach((pile, index) => {
+    pile.forEach((card, position) => locations.set(card, { zone: 'foundation', index, position }));
+  });
+  state.freeCells.forEach((card, index) => {
+    if (card !== null) locations.set(card, { zone: 'freecell', index, position: 0 });
+  });
+  return locations;
+}
+
+const ZONE_ORDER: Record<SolitaireCardLocation['zone'], number> = {
+  stock: 0,
+  waste: 1,
+  tableau: 2,
+  foundation: 3,
+  freecell: 4
+};
+
+/**
+ * Cards that changed place between two states, one entry per card. Moves are
+ * ordered by where the card landed (zone, pile, position), which is exactly
+ * the order the cards were pushed, so a client can replay them.
+ */
+export function diffSolitaire(before: SolitaireState, after: SolitaireState): SolitaireCardMove[] {
+  const beforeMap = cardLocations(before);
+  const afterMap = cardLocations(after);
+  const moves: SolitaireCardMove[] = [];
+  for (const [card, from] of beforeMap) {
+    const to = afterMap.get(card);
+    if (!to) continue;
+    if (to.zone === from.zone && to.index === from.index && to.position === from.position) continue;
+    moves.push({ card, from, to });
+  }
+  moves.sort(
+    (a, b) =>
+      ZONE_ORDER[a.to.zone] - ZONE_ORDER[b.to.zone] ||
+      a.to.index - b.to.index ||
+      a.to.position - b.to.position
+  );
+  return moves;
+}
+
+/**
+ * Replays a `solitaireMove` message onto a public table. Cards leave their
+ * old piles first, then land in their new piles in push order, which mirrors
+ * how the server mutated the state.
+ */
+export function applySolitaireMoves(
+  state: PublicSolitaire,
+  moves: SolitaireCardMove[]
+): PublicSolitaire {
+  if (moves.length === 0) return state;
+  const stock = [...state.stock];
+  const waste = [...state.waste];
+  const foundations = state.foundations.map((pile) => [...pile]);
+  const tableau = state.tableau.map((column) => [...column]);
+  const faceDown = [...state.faceDown];
+  const freeCells = [...state.freeCells];
+
+  for (const move of moves) {
+    const { zone, index } = move.from;
+    if (zone === 'stock') {
+      const at = stock.lastIndexOf(move.card);
+      if (at >= 0) stock.splice(at, 1);
+    } else if (zone === 'waste') {
+      const at = waste.lastIndexOf(move.card);
+      if (at >= 0) waste.splice(at, 1);
+    } else if (zone === 'tableau') {
+      const column = tableau[index];
+      const at = column ? column.lastIndexOf(move.card) : -1;
+      if (at >= 0) {
+        column.splice(at, 1);
+        if (column.length === 0) {
+          faceDown[index] = 0;
+        } else if (faceDown[index] >= column.length) {
+          faceDown[index] = column.length - 1;
+        }
+      }
+    } else if (zone === 'foundation') {
+      const pile = foundations[index];
+      const at = pile ? pile.lastIndexOf(move.card) : -1;
+      if (at >= 0) pile.splice(at, 1);
+    } else if (freeCells[index] === move.card) {
+      freeCells[index] = null;
+    }
+  }
+  for (const move of moves) {
+    const { zone, index } = move.to;
+    if (zone === 'stock') stock.push(move.card);
+    else if (zone === 'waste') waste.push(move.card);
+    else if (zone === 'tableau') tableau[index]?.push(move.card);
+    else if (zone === 'foundation') foundations[index]?.push(move.card);
+    else freeCells[index] = move.card;
+  }
+  return { ...state, stock, stockCount: stock.length, waste, foundations, tableau, faceDown, freeCells };
 }

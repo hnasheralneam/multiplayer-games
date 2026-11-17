@@ -1,5 +1,5 @@
 import type { ErrorCode, ServerMessage } from '../../shared/types';
-import { removeCursor, retainCursors, setCursor } from './cursors';
+import { removeCursor, retainCursors, setCursor, syncCursorPlayers } from './cursors';
 import type { RoomAction } from './roomReducer';
 
 /**
@@ -38,6 +38,7 @@ export function createMessageHandler(ctx: MessageContext): (message: ServerMessa
           offset: message.serverNow - Date.now(),
           notice: message.notice
         });
+        syncCursorPlayers(message.room.players);
         retainCursors(message.room.players.map((player) => player.id));
         break;
       }
@@ -47,6 +48,7 @@ export function createMessageHandler(ctx: MessageContext): (message: ServerMessa
           room: message.room,
           offset: message.serverNow - Date.now()
         });
+        syncCursorPlayers(message.room.players);
         retainCursors(message.room.players.map((player) => player.id));
         break;
       }
@@ -88,15 +90,25 @@ export function createMessageHandler(ctx: MessageContext): (message: ServerMessa
         if (message.leave || message.x < 0 || message.y < 0) {
           removeCursor(message.id);
         } else {
-          setCursor({
-            id: message.id,
-            x: message.x,
-            y: message.y,
-            name: message.name,
-            color: message.color,
-            avatar: message.avatar
-          });
+          setCursor({ id: message.id, x: message.x, y: message.y });
         }
+        break;
+      case 'solitaireMove':
+        ctx.dispatch({
+          type: 'solitaireMove',
+          moves: message.moves,
+          totalMoves: message.totalMoves,
+          passes: message.passes
+        });
+        break;
+      case 'mahjongMatch':
+        ctx.dispatch({ type: 'mahjongMatch', a: message.a, b: message.b });
+        break;
+      case 'mahjongSelect':
+        ctx.dispatch({ type: 'mahjongSelect', by: message.by, i: message.i });
+        break;
+      case 'mahjongShuffle':
+        ctx.dispatch({ type: 'mahjongShuffle', tiles: message.tiles, shuffles: message.shuffles });
         break;
       case 'closed':
         ctx.dispatch({ type: 'fatal', code: 'closed', message: message.message });

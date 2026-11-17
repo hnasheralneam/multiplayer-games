@@ -56,6 +56,7 @@ import {
   autoMove,
   autoPlaySafe,
   dealSolitaire,
+  diffSolitaire,
   drawStock,
   playMove,
   recycleWaste,
@@ -250,7 +251,12 @@ export class Room {
     return Boolean(client.playerId && client.playerId === this.hostId);
   }
 
-  toPublic(): PublicRoom {
+  /**
+   * `includeResult` defaults to true for one-shot reads (welcome, HTTP
+   * preview). Routine live broadcasts pass false: the result is sent once
+   * when the round ends, and clients keep it locally after that.
+   */
+  toPublic(includeResult = true): PublicRoom {
     const players = this.sortedPlayers().map((player) => ({
       id: player.id,
       name: player.name,
@@ -352,7 +358,7 @@ export class Room {
       sudoku,
       solitaire,
       mahjong,
-      lastResult: this.lastResult ?? undefined
+      lastResult: includeResult ? this.lastResult ?? undefined : undefined
     };
   }
 
@@ -373,8 +379,11 @@ export class Room {
     }
   }
 
-  private broadcastRoom(except?: Client): void {
-    this.broadcast({ t: 'room', room: this.toPublic(), serverNow: Date.now() }, except);
+  private broadcastRoom(except?: Client, includeResult = false): void {
+    this.broadcast(
+      { t: 'room', room: this.toPublic(includeResult), serverNow: Date.now() },
+      except
+    );
   }
 
   private sendWelcome(client: Client, player: Player | null, token?: string, notice?: string): void {
@@ -1058,7 +1067,7 @@ export class Room {
     };
     this.scheduleResultsReturn();
     this.touch();
-    this.broadcastRoom();
+    this.broadcastRoom(undefined, true);
   }
 
   private handleSudokuEntry(client: Client, i: number, digit: number): void {
@@ -1148,7 +1157,7 @@ export class Room {
     };
     this.scheduleResultsReturn();
     this.touch();
-    this.broadcastRoom();
+    this.broadcastRoom(undefined, true);
   }
 
   private handleSolitaireAction(
@@ -1163,6 +1172,21 @@ export class Room {
     if (this.resumeAt && now < this.resumeAt) return;
     if (now - player.lastActionAt < SUDOKU_ACTION_COOLDOWN_MS) return;
     player.lastActionAt = now;
+
+    // Snapshot before mutating so the broadcast can carry only the cards
+    // that changed place, not the whole table.
+    const state = solitaire.state;
+    const snapshot: SolitaireState = {
+      variant: state.variant,
+      draw: state.draw,
+      stock: [...state.stock],
+      waste: [...state.waste],
+      foundations: state.foundations.map((pile) => [...pile]),
+      tableau: state.tableau.map((column) => [...column]),
+      faceDown: [...state.faceDown],
+      freeCells: [...state.freeCells],
+      passes: state.passes
+    };
 
     let applied = false;
     switch (message.action) {
@@ -1194,7 +1218,12 @@ export class Room {
       this.endSolitaire();
       return;
     }
-    this.broadcastRoom();
+    this.broadcast({
+      t: 'solitaireMove',
+      moves: diffSolitaire(snapshot, state),
+      totalMoves: solitaire.moves,
+      passes: state.passes
+    });
   }
 
   private endSolitaire(): void {
@@ -1232,7 +1261,7 @@ export class Room {
     } satisfies SolitaireResult;
     this.scheduleResultsReturn();
     this.touch();
-    this.broadcastRoom();
+    this.broadcastRoom(undefined, true);
   }
 
   private handleMahjongAction(
@@ -1257,7 +1286,7 @@ export class Room {
       // The server only allows a shuffle when the table is out of matches.
       if (!shuffleRemaining(state, randInt(0, 2 ** 31 - 1))) return;
       this.touch();
-      this.broadcastRoom();
+      this.broadcast({ t: 'mahjongShuffle', tiles: [...state.tiles], shuffles: state.shuffles });
       return;
     }
 
@@ -1277,7 +1306,7 @@ export class Room {
       this.endMahjong();
       return;
     }
-    this.broadcastRoom();
+    this.broadcast({ t: 'mahjongMatch', a: message.a, b: message.b });
   }
 
   private handleMahjongSelect(
@@ -1291,14 +1320,16 @@ export class Room {
 
     if (i === null || i === undefined) {
       if (!mahjong.selections.delete(player.id)) return;
-    } else {
-      if (!Number.isInteger(i) || i < 0 || i >= mahjong.state.tiles.length) return;
-      if (!isTileFree(mahjong.state.layout, mahjong.state.tiles, i)) return;
-      if (mahjong.selections.get(player.id) === i) return;
-      mahjong.selections.set(player.id, i);
+      this.touch();
+      this.broadcast({ t: 'mahjongSelect', by: player.id, i: null });
+      return;
     }
+    if (!Number.isInteger(i) || i < 0 || i >= mahjong.state.tiles.length) return;
+    if (!isTileFree(mahjong.state.layout, mahjong.state.tiles, i)) return;
+    if (mahjong.selections.get(player.id) === i) return;
+    mahjong.selections.set(player.id, i);
     this.touch();
-    this.broadcastRoom();
+    this.broadcast({ t: 'mahjongSelect', by: player.id, i });
   }
 
   private endMahjong(): void {
@@ -1336,7 +1367,7 @@ export class Room {
     } satisfies MahjongResult;
     this.scheduleResultsReturn();
     this.touch();
-    this.broadcastRoom();
+    this.broadcastRoom(undefined, true);
   }
 
   private scheduleResultsReturn(): void {
@@ -1383,33 +1414,10 @@ export class Room {
     if (now - player.lastCursorAt < CURSOR_COOLDOWN_MS) return;
     player.lastCursorAt = now;
     if (x < 0 || y < 0) {
-      this.broadcast(
-        {
-          t: 'cursor',
-          id: player.id,
-          x: -1,
-          y: -1,
-          name: player.name,
-          color: player.color,
-          avatar: player.avatar,
-          leave: true
-        },
-        client
-      );
+      this.broadcast({ t: 'cursor', id: player.id, x: -1, y: -1, leave: true }, client);
       return;
     }
-    this.broadcast(
-      {
-        t: 'cursor',
-        id: player.id,
-        x,
-        y,
-        name: player.name,
-        color: player.color,
-        avatar: player.avatar
-      },
-      client
-    );
+    this.broadcast({ t: 'cursor', id: player.id, x, y }, client);
   }
 
   private handleLeave(client: Client): void {
@@ -1477,19 +1485,7 @@ export class Room {
     player.removeAt = Date.now() + (this.status === 'playing' ? PLAYING_SEAT_TTL_MS : LOBBY_SEAT_TTL_MS);
     this.mahjong?.selections.delete(player.id);
 
-    this.broadcast(
-      {
-        t: 'cursor',
-        id: player.id,
-        x: -1,
-        y: -1,
-        name: player.name,
-        color: player.color,
-        avatar: player.avatar,
-        leave: true
-      },
-      client
-    );
+    this.broadcast({ t: 'cursor', id: player.id, x: -1, y: -1, leave: true }, client);
     if (player.id === this.hostId) this.scheduleHostMigration();
     if (this.connectedPlayers() === 0) {
       if (this.status === 'countdown') {

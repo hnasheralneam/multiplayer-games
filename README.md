@@ -33,6 +33,7 @@ The link is the product: create a room, show the QR or say the code, and everyon
 - **Play alone.** Want the table to yourself? Solo rooms run the same engine inside your tab: instant start, no socket, no API calls, and they work even when the room server is unreachable.
 - **One link for the whole session.** Lobby, game, results, and the next game all live at `/r/K7QP`. Copying the address bar always copies a working invite.
 - **Node.js on the server.** One process serves the client, the HTTP API, the WebSocket stream, and the OG preview tags. Rooms live in memory.
+- **Light on a weak network.** The wire carries deltas, not boards: reveals, flags, Sudoku digits, moved cards, and tile picks arrive as small messages; cursor presence carries only an id and a quantized position, throttled to 10 Hz and only when it crosses a cell-sized step. The full room state is sent on join, resume, and round transitions — the round result goes once, then clients keep their copy. Player ids are 8 characters from the same unambiguous alphabet as room codes, because they appear in every delta.
 
 ## Stack
 
@@ -123,7 +124,8 @@ The first click is always safe: mines are placed after that click, excluding the
 - Tap a cell and a number, or use `1`–`9` on a keyboard. `Backspace`/`Delete` clears a cell.
 - Wrong digits turn red. Anyone can replace them, so the table fixes mistakes together.
 - The server validates every entry against the solution and checks for a complete grid. No lives; the result records time and mistakes.
-- Difficulty choices are Easy (45 clues), Medium (36), and Hard (30).
+- Difficulty choices are Easy (45 clues), Medium (36), Hard (30), and Extra Hard (26).
+- Clue removal always keeps at least one given in every row, column, and box, so no line ever renders completely blank.
 - Late join is on by default so a friend can jump into a running game.
 
 **Klondike**

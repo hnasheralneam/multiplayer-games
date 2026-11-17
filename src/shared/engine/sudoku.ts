@@ -137,13 +137,26 @@ export function generateSudoku(
   const indices = shuffleInPlace([...Array(81).keys()], random);
   let clues = 81;
 
+  // Clues left per row, column, and box. Removal must never drop one to zero,
+  // otherwise a difficulty can produce a fully blank line that reads as a bug.
+  const rowLeft = new Array<number>(9).fill(9);
+  const colLeft = new Array<number>(9).fill(9);
+  const boxLeft = new Array<number>(9).fill(9);
+
   for (const index of indices) {
     if (clues <= targetClues) break;
+    const row = Math.floor(index / 9);
+    const col = index % 9;
+    const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+    if (rowLeft[row] === 1 || colLeft[col] === 1 || boxLeft[box] === 1) continue;
     const backup = puzzle[index];
     puzzle[index] = 0;
     const unique = countSolutions(puzzle, 2).count === 1;
     if (unique) {
       clues -= 1;
+      rowLeft[row] -= 1;
+      colLeft[col] -= 1;
+      boxLeft[box] -= 1;
     } else {
       puzzle[index] = backup;
     }

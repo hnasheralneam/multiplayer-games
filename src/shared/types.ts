@@ -148,7 +148,8 @@ export interface SolitaireSlot {
 export const SUDOKU_DIFFICULTIES = {
   easy: { label: 'Easy', clues: 45 },
   medium: { label: 'Medium', clues: 36 },
-  hard: { label: 'Hard', clues: 30 }
+  hard: { label: 'Hard', clues: 30 },
+  extra: { label: 'Extra Hard', clues: 26 }
 } as const;
 export type SudokuDifficulty = keyof typeof SUDOKU_DIFFICULTIES;
 export const SUDOKU_DIFFICULTY_IDS = Object.keys(SUDOKU_DIFFICULTIES) as SudokuDifficulty[];
@@ -572,15 +573,58 @@ export interface StaleMessage {
   i: number;
 }
 
+/**
+ * Presence only: the client already knows each player's name, color, and
+ * avatar from the room state, so the wire carries just the id and position.
+ */
 export interface CursorMessageOut {
   t: 'cursor';
   id: string;
   x: number;
   y: number;
-  name: string;
-  color: string;
-  avatar: Avatar;
   leave?: boolean;
+}
+
+/** Where a card sits in a solitaire table; `position` is the index within the pile. */
+export interface SolitaireCardLocation {
+  zone: 'stock' | 'waste' | 'tableau' | 'foundation' | 'freecell';
+  index: number;
+  position: number;
+}
+
+export interface SolitaireCardMove {
+  card: number;
+  from: SolitaireCardLocation;
+  to: SolitaireCardLocation;
+}
+
+/**
+ * Incremental solitaire sync: the cards that changed place since the last
+ * state, in the order they landed in their new piles.
+ */
+export interface SolitaireMoveMessage {
+  t: 'solitaireMove';
+  moves: SolitaireCardMove[];
+  totalMoves: number;
+  passes: number;
+}
+
+export interface MahjongMatchMessage {
+  t: 'mahjongMatch';
+  a: number;
+  b: number;
+}
+
+export interface MahjongSelectMessage {
+  t: 'mahjongSelect';
+  by: string;
+  i: number | null;
+}
+
+export interface MahjongShuffleMessage {
+  t: 'mahjongShuffle';
+  tiles: number[];
+  shuffles: number;
 }
 
 export interface ErrorMessage {
@@ -610,6 +654,10 @@ export type ServerMessage =
   | LifeMessage
   | StaleMessage
   | CursorMessageOut
+  | SolitaireMoveMessage
+  | MahjongMatchMessage
+  | MahjongSelectMessage
+  | MahjongShuffleMessage
   | SudokuCellMessage
   | ErrorMessage
   | ClosedMessage;

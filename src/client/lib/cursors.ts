@@ -14,18 +14,49 @@ export interface RemoteCursor {
   avatar: Avatar;
 }
 
-interface TrackedCursor extends RemoteCursor {
+interface TrackedCursor {
+  id: string;
+  x: number;
+  y: number;
   seen: number;
 }
 
+interface CursorPlayerInfo {
+  name: string;
+  color: string;
+  avatar: Avatar;
+}
+
 let tracked = new Map<string, TrackedCursor>();
+// Player identity comes from room state, not from cursor messages, so the
+// wire only ever carries id + position.
+let playerInfo = new Map<string, CursorPlayerInfo>();
 let snapshot: RemoteCursor[] = [];
 const listeners = new Set<() => void>();
 let pruneTimer: ReturnType<typeof setInterval> | null = null;
 
 function emit(): void {
-  snapshot = [...tracked.values()].map(({ seen: _seen, ...cursor }) => cursor);
+  snapshot = [...tracked.values()]
+    .map(({ seen: _seen, ...cursor }) => {
+      const info = playerInfo.get(cursor.id);
+      if (!info) return null;
+      return { ...cursor, ...info };
+    })
+    .filter((cursor): cursor is RemoteCursor => cursor !== null);
   for (const listener of listeners) listener();
+}
+
+/** Feed the latest player list so cursors can be labelled without the wire carrying names. */
+export function syncCursorPlayers(
+  players: Array<{ id: string; name: string; color: string; avatar: Avatar }>
+): void {
+  playerInfo = new Map(
+    players.map((player) => [
+      player.id,
+      { name: player.name, color: player.color, avatar: player.avatar }
+    ])
+  );
+  if (tracked.size > 0) emit();
 }
 
 function ensurePruner(): void {
@@ -47,7 +78,7 @@ function ensurePruner(): void {
   }, 1200);
 }
 
-export function setCursor(cursor: RemoteCursor): void {
+export function setCursor(cursor: { id: string; x: number; y: number }): void {
   const existing = tracked.get(cursor.id);
   const seen = Date.now();
   if (existing && existing.x === cursor.x && existing.y === cursor.y) {
@@ -77,6 +108,7 @@ export function retainCursors(ids: Iterable<string>): void {
 
 export function clearCursors(): void {
   tracked = new Map();
+  playerInfo = new Map();
   if (pruneTimer) {
     clearInterval(pruneTimer);
     pruneTimer = null;
@@ -108,20 +140,29 @@ export function useCursorEmitter(
   disabled = false
 ): CursorHandlers {
   const lastEmit = useRef(0);
+  const lastCell = useRef('');
 
   const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (!onCursor || disabled || event.pointerType !== 'mouse') return;
     const stamp = performance.now();
-    if (stamp - lastEmit.current < 45) return;
-    lastEmit.current = stamp;
+    if (stamp - lastEmit.current < 100) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    onCursor(x, y);
+    // Quantize to a coarse grid so a drifting cursor only emits when it
+    // crosses a cell-sized step, not on every pixel of movement.
+    const qx = Math.round(x * 32) / 32;
+    const qy = Math.round(y * 32) / 32;
+    const cell = `${qx}:${qy}`;
+    if (cell === lastCell.current) return;
+    lastEmit.current = stamp;
+    lastCell.current = cell;
+    onCursor(qx, qy);
   };
 
   const onPointerLeave = () => {
     if (!onCursor || disabled) return;
+    lastCell.current = '';
     onCursor(-1, -1);
   };
 

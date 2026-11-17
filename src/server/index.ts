@@ -355,6 +355,8 @@ app.setNotFoundHandler((request, reply) => {
 
 const sweeper = setInterval(() => registry.sweep(), 30_000);
 
+// 20 s keeps a dead connection from idling the room for a full minute on a
+// flaky link; the client's own reconnect backoff is much faster than this.
 const heartbeat = setInterval(() => {
   for (const socket of sockets) {
     const tracked = socket as WebSocket & { isAlive?: boolean };
@@ -371,7 +373,7 @@ const heartbeat = setInterval(() => {
       sockets.delete(socket);
     }
   }
-}, 30_000);
+}, 20_000);
 
 async function shutdown(signal: string): Promise<void> {
   console.log(`\n${signal} received, closing rooms.`);

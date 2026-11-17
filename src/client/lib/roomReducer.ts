@@ -1,4 +1,5 @@
-import type { Avatar, GameKind, PublicRoom, You } from '../../shared/types';
+import { applySolitaireMoves } from '../../shared/solitaire';
+import type { Avatar, GameKind, PublicRoom, SolitaireCardMove, You } from '../../shared/types';
 
 export interface JoinIntent {
   name: string;
@@ -48,6 +49,10 @@ export type RoomAction =
   | { type: 'staleClear'; seq: number }
   | { type: 'sudokuCell'; i: number; digit: number; by: string; wrong: boolean; seq: number }
   | { type: 'sudokuRecentClear'; seq: number }
+  | { type: 'solitaireMove'; moves: SolitaireCardMove[]; totalMoves: number; passes: number }
+  | { type: 'mahjongMatch'; a: number; b: number }
+  | { type: 'mahjongSelect'; by: string; i: number | null }
+  | { type: 'mahjongShuffle'; tiles: number[]; shuffles: number }
   | { type: 'joinError'; code: string; message: string }
   | { type: 'fatal'; code: string; message: string }
   | { type: 'clearFatal'; }
@@ -115,9 +120,14 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       }
       const roundChanged = action.room.round?.id !== state.room?.round?.id;
       const sudokuChanged = action.room.sudoku?.id !== state.room?.sudoku?.id;
+      // The result is broadcast once, when the round ends. Later room
+      // messages during the results screen omit it, so keep the local copy.
+      const lastResult =
+        action.room.lastResult ??
+        (action.room.status === 'results' ? state.room?.lastResult : undefined);
       return {
         ...state,
-        room: action.room,
+        room: { ...action.room, lastResult },
         you,
         serverOffset: action.offset,
         connection: 'open',
@@ -183,6 +193,58 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
     case 'sudokuRecentClear':
       if (state.sudokuRecent?.seq !== action.seq) return state;
       return { ...state, sudokuRecent: null };
+    case 'solitaireMove': {
+      if (!state.room?.solitaire) return state;
+      const solitaire = applySolitaireMoves(state.room.solitaire, action.moves);
+      return {
+        ...state,
+        room: {
+          ...state.room,
+          solitaire: { ...solitaire, moves: action.totalMoves, passes: action.passes }
+        }
+      };
+    }
+    case 'mahjongMatch': {
+      if (!state.room?.mahjong) return state;
+      const mahjong = state.room.mahjong;
+      const tiles = [...mahjong.tiles];
+      tiles[action.a] = -1;
+      tiles[action.b] = -1;
+      return {
+        ...state,
+        room: {
+          ...state.room,
+          mahjong: {
+            ...mahjong,
+            tiles,
+            moves: mahjong.moves + 1,
+            selections: mahjong.selections.filter(
+              (selection) => selection.i !== action.a && selection.i !== action.b
+            )
+          }
+        }
+      };
+    }
+    case 'mahjongSelect': {
+      if (!state.room?.mahjong) return state;
+      const mahjong = state.room.mahjong;
+      const selections = mahjong.selections.filter((selection) => selection.by !== action.by);
+      if (action.i !== null) selections.push({ by: action.by, i: action.i });
+      return {
+        ...state,
+        room: { ...state.room, mahjong: { ...mahjong, selections } }
+      };
+    }
+    case 'mahjongShuffle': {
+      if (!state.room?.mahjong) return state;
+      return {
+        ...state,
+        room: {
+          ...state.room,
+          mahjong: { ...state.room.mahjong, tiles: action.tiles, shuffles: action.shuffles }
+        }
+      };
+    }
     case 'staleClear':
       if (state.stale?.seq !== action.seq) return state;
       return { ...state, stale: null };

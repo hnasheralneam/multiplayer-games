@@ -4,9 +4,20 @@
 
 const webcrypto: Crypto = globalThis.crypto;
 
-/** RFC 4122 v4 id, used for player and round ids. */
+// The same unambiguous alphabet the room codes use (no vowels, no 0/1).
+const ID_ALPHABET = '23456789BCDFGHJKMNPQRSTVWXYZ';
+
+/**
+ * Short random id (8 chars) for players and rounds. 28^8 combinations is far
+ * more than a room of eight ever needs, and 8 chars beat a 36-char UUID in
+ * every message that carries a player id.
+ */
 export function newId(): string {
-  return webcrypto.randomUUID();
+  const bytes = new Uint8Array(8);
+  webcrypto.getRandomValues(bytes);
+  let id = '';
+  for (const byte of bytes) id += ID_ALPHABET[byte % ID_ALPHABET.length];
+  return id;
 }
 
 /** Uniform integer in [min, max) via rejection sampling on 32-bit draws. */

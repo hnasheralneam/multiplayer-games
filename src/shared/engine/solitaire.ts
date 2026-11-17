@@ -20,7 +20,10 @@ export {
   drawStock,
   recycleWaste,
   solitaireWon,
-  foundationTotal
+  foundationTotal,
+  cardLocations,
+  diffSolitaire,
+  applySolitaireMoves
 } from '../solitaire';
 
 function shuffledDeck(seed: number): number[] {
