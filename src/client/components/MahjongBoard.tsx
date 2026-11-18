@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   MAHJONG_LAYOUTS,
   freeTileIndices,
@@ -91,6 +91,37 @@ export function MahjongBoard({
   const rows = mahjongTileRows(mahjong.layout);
   const maxLayer = mahjongTileLayers(mahjong.layout) - 1;
   const totalRowsCells = rows * 2 + maxLayer * LIFT;
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const [fitWidth, setFitWidth] = useState<number | null>(null);
+
+  // The board is aspect-locked by its layout, so one measured width makes it
+  // fill the stage and — capped by the space below the room bar — the
+  // visible screen, whole and without scrolling. It re-fits on window
+  // resizes and new layouts only; matching tiles never rescales the table.
+  // 86 = stage padding and border (38px total budget) + the page margin.
+  useLayoutEffect(() => {
+    const stage = boardRef.current?.parentElement;
+    if (!stage) return;
+    const aspect = (cols * 2) / totalRowsCells;
+    const update = () => {
+      const stageTop = stage.getBoundingClientRect().top + window.scrollY;
+      const viewportH = window.visualViewport?.height ?? window.innerHeight;
+      const availableH = Math.max(240, viewportH - stageTop - 86);
+      const stageW = stage.clientWidth - 38;
+      const width = Math.floor(Math.max(420, Math.min(stageW, availableH * aspect)));
+      setFitWidth((prev) => (prev === width ? prev : width));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(stage);
+    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+    };
+  }, [cols, totalRowsCells]);
 
   const freeSet = useMemo(
     () => new Set(freeTileIndices(mahjong.layout, mahjong.tiles)),
@@ -143,11 +174,13 @@ export function MahjongBoard({
   const boardStyle = {
     '--mj-cols': cols,
     '--mj-rows': totalRowsCells / 2,
-    aspectRatio: `${cols * 2} / ${totalRowsCells}`
+    aspectRatio: `${cols * 2} / ${totalRowsCells}`,
+    width: fitWidth ? `${fitWidth}px` : undefined
   } as CSSProperties;
 
   return (
     <div
+      ref={boardRef}
       className="mahjong-board"
       style={boardStyle}
       aria-label="Mahjongg board"

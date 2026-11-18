@@ -403,7 +403,8 @@ export function RoomPage({ code }: { code: string }) {
       (room.status !== 'lobby' &&
         room.settings.game === 'minesweeper' &&
         room.settings.width > room.settings.height * 1.5) ||
-      (room.status !== 'lobby' && room.solitaire !== null);
+      (room.status !== 'lobby' && room.solitaire !== null) ||
+      (room.status !== 'lobby' && room.mahjong !== null);
     const canTakeSeat =
       spectator &&
       room.players.length < room.settings.maxPlayers &&
