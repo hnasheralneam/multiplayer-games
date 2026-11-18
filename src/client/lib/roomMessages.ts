@@ -98,7 +98,8 @@ export function createMessageHandler(ctx: MessageContext): (message: ServerMessa
           type: 'solitaireMove',
           moves: message.moves,
           totalMoves: message.totalMoves,
-          passes: message.passes
+          passes: message.passes,
+          canUndo: message.canUndo
         });
         break;
       case 'mahjongMatch':

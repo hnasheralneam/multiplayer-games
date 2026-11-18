@@ -461,6 +461,7 @@ export function RoomPage({ code }: { code: string }) {
             send({ t: 'solitaire', action: 'move', card, to })
           }
           onAuto={(card: number) => send({ t: 'solitaire', action: 'auto', card })}
+          onUndo={() => send({ t: 'solitaire', action: 'undo' })}
           onCursor={(x, y) => send({ t: 'cursor', x, y })}
           onEndGame={askEndGame}
         />

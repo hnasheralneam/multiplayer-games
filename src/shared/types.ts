@@ -318,6 +318,8 @@ export interface PublicSolitaire {
   freeCells: Array<number | null>;
   passes: number;
   moves: number;
+  /** The room's shared history still has a table to give back. */
+  canUndo: boolean;
 }
 
 export interface SolitairePlayerStats {
@@ -497,7 +499,7 @@ export interface SudokuEntryMessage {
 
 export interface SolitaireMessage {
   t: 'solitaire';
-  action: 'draw' | 'recycle' | 'move' | 'auto';
+  action: 'draw' | 'recycle' | 'move' | 'auto' | 'undo';
   card?: number;
   to?: SolitaireSlot;
 }
@@ -607,6 +609,8 @@ export interface SolitaireMoveMessage {
   moves: SolitaireCardMove[];
   totalMoves: number;
   passes: number;
+  /** The shared history still holds a table to give back. */
+  canUndo: boolean;
 }
 
 export interface MahjongMatchMessage {

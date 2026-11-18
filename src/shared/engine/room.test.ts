@@ -364,6 +364,47 @@ describe('room flow', () => {
     expect(guest.messages.some((message) => message.t === 'room')).toBe(false);
   });
 
+  it('undoes the last solitaire play for the whole table', () => {
+    const room = makeRoom({ game: 'klondike', klondikeDraw: 1 });
+    const host = testClient();
+    const guest = testClient();
+    room.handleJoin(host, {
+      t: 'join',
+      code: 'K7QP',
+      name: 'Maya',
+      avatar: '🦊',
+      token: 'host-token'
+    });
+    room.handleJoin(guest, { t: 'join', code: 'K7QP', name: 'Sam', avatar: '🐈' });
+    room.handleMessage(host, { t: 'start' });
+    vi.advanceTimersByTime(3_000);
+
+    const stock = room.solitaire!.state.stock.length;
+    room.handleMessage(host, { t: 'solitaire', action: 'draw' });
+    const drawn = room.toPublic().solitaire!;
+    expect(drawn.moves).toBe(1);
+    expect(drawn.canUndo).toBe(true);
+    const hostId = room.toPublic().players.find((player) => player.isHost)!.id;
+    expect(room.solitaire!.stats.get(hostId)).toBe(1);
+
+    guest.messages.length = 0;
+    room.handleMessage(guest, { t: 'solitaire', action: 'undo' });
+    const undone = room.toPublic().solitaire!;
+    expect(undone.stock.length).toBe(stock);
+    expect(undone.moves).toBe(0);
+    expect(undone.canUndo).toBe(false);
+    // The play is given back through the move wire — the seat that made it
+    // loses the credit, and nobody renews the whole table.
+    expect(room.solitaire!.stats.get(hostId)).toBe(0);
+    expect(guest.messages.some((message) => message.t === 'solitaireMove')).toBe(true);
+    expect(guest.messages.some((message) => message.t === 'room')).toBe(false);
+
+    guest.messages.length = 0;
+    room.handleMessage(guest, { t: 'solitaire', action: 'undo' });
+    expect(room.toPublic().solitaire?.moves).toBe(0);
+    expect(guest.messages.some((message) => message.t === 'solitaireMove')).toBe(false);
+  });
+
   it('deals a FreeCell table with four free cells', () => {
     const room = makeRoom({ game: 'freecell' });
     const host = testClient();
@@ -563,7 +604,8 @@ describe('wire traffic', () => {
       table = {
         ...applySolitaireMoves(table, message.moves),
         moves: message.totalMoves,
-        passes: message.passes
+        passes: message.passes,
+        canUndo: message.canUndo
       };
       vi.advanceTimersByTime(40);
     }
@@ -581,7 +623,8 @@ describe('wire traffic', () => {
       table = {
         ...applySolitaireMoves(table, recycle.moves),
         moves: recycle.totalMoves,
-        passes: recycle.passes
+        passes: recycle.passes,
+        canUndo: recycle.canUndo
       };
     }
     expect(table).toEqual(room.toPublic().solitaire);

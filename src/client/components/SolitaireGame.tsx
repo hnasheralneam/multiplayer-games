@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { GAME_META, type PublicRoom, type SolitaireSlot, type You } from '../../shared/types';
 import { GameHud, HudEndGame, HudMode, HudTimer } from './GameHud';
 import { StatusPill, useNow } from './ui';
 import { GameIcon } from './GameIcon';
+import { IconUndo } from './icons';
 import { useSolitaireSolver } from '../lib/useSolitaireSolver';
 import { SolitaireBoard } from './SolitaireBoard';
 
@@ -15,6 +16,7 @@ export interface SolitaireGameProps {
   onRecycle: () => void;
   onMove: (card: number, to: SolitaireSlot) => void;
   onAuto: (card: number) => void;
+  onUndo: () => void;
   onCursor: (x: number, y: number) => void;
   onEndGame?: () => void;
 }
@@ -32,6 +34,7 @@ export function SolitaireGame({
   onRecycle,
   onMove,
   onAuto,
+  onUndo,
   onCursor,
   onEndGame
 }: SolitaireGameProps) {
@@ -39,6 +42,8 @@ export function SolitaireGame({
   const now = useNow(200);
   const serverNow = now + serverOffset;
   const [selected, setSelected] = useState<number | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [cardCap, setCardCap] = useState<number | null>(null);
 
   useEffect(() => {
     setSelected(null);
@@ -54,9 +59,46 @@ export function SolitaireGame({
     if (!present) setSelected(null);
   }, [solitaire, selected]);
 
+  const deepest = useMemo(
+    () => (solitaire ? Math.max(0, ...solitaire.tableau.map((column) => column.length - 1)) : 0),
+    [solitaire]
+  );
+
+  // The board is a fixed-ratio design measured in card widths (see the
+  // .solitaire-board comment), so the ratio is exact at any size. The width
+  // fit alone can still make a deep tableau run past the viewport, so the
+  // stage's real space below the room bar also caps the card width here —
+  // the whole table then always fits the visible screen, sans scroll.
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const update = () => {
+      const stageTop = stage.getBoundingClientRect().top + window.scrollY;
+      const viewportH = window.visualViewport?.height ?? window.innerHeight;
+      // Space left of the stage's own chrome: its padding and border sit
+      // between the board and the stage box, and the page keeps 48px further
+      // down under the table.
+      const available = Math.max(240, viewportH - stageTop - 83);
+      const units = 3.04 + 0.5 * deepest;
+      const cap = Math.floor(available / units);
+      setCardCap((prev) => (prev === cap ? prev : cap));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(stage);
+    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+    };
+  }, [deepest]);
+
   const solverStatus = useSolitaireSolver(solitaire, room.status === 'playing');
 
-  if (!solitaire) return null;  const meta = GAME_META[solitaire.variant];
+  if (!solitaire) return null;
+  const meta = GAME_META[solitaire.variant];
   const resuming = Boolean(room.resumeAt && serverNow < room.resumeAt);
   const canPlay =
     connected && room.status === 'playing' && you.role === 'player' && !resuming;
@@ -95,13 +137,26 @@ export function SolitaireGame({
                 ? `${solitaire.passes} pass${solitaire.passes === 1 ? '' : 'es'}`
                 : 'Unlimited passes'}
             </span>
+            <button
+              type="button"
+              className="hud-undo"
+              onClick={onUndo}
+              disabled={!canPlay || !solitaire.canUndo}
+              aria-label="Undo the last move for everyone"
+            >
+              <IconUndo size={13} /> Undo
+            </button>
             {onEndGame && you.id === room.hostId && <HudEndGame onClick={onEndGame} />}
           </>
         }
       />
 
       <div className="solitaire-layout">
-        <div className="solitaire-stage">
+        <div
+        className="solitaire-stage"
+        ref={stageRef}
+        style={{ '--card-cap': cardCap ? `${cardCap}px` : undefined } as CSSProperties}
+      >
           <SolitaireBoard
             solitaire={solitaire}
             selected={selected}

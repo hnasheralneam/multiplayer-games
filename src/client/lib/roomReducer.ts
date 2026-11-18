@@ -49,7 +49,7 @@ export type RoomAction =
   | { type: 'staleClear'; seq: number }
   | { type: 'sudokuCell'; i: number; digit: number; by: string; wrong: boolean; seq: number }
   | { type: 'sudokuRecentClear'; seq: number }
-  | { type: 'solitaireMove'; moves: SolitaireCardMove[]; totalMoves: number; passes: number }
+  | { type: 'solitaireMove'; moves: SolitaireCardMove[]; totalMoves: number; passes: number; canUndo: boolean }
   | { type: 'mahjongMatch'; a: number; b: number }
   | { type: 'mahjongSelect'; by: string; i: number | null }
   | { type: 'mahjongShuffle'; tiles: number[]; shuffles: number }
@@ -200,7 +200,12 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         ...state,
         room: {
           ...state.room,
-          solitaire: { ...solitaire, moves: action.totalMoves, passes: action.passes }
+          solitaire: {
+            ...solitaire,
+            moves: action.totalMoves,
+            passes: action.passes,
+            canUndo: action.canUndo
+          }
         }
       };
     }

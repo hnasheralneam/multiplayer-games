@@ -82,6 +82,22 @@ const SELECT_COOLDOWN_MS = 35;
 const ROOM_TTL_MS = 24 * 60 * 60_000;
 const RESULTS_RETURN_MS = 12_000;
 const SUDOKU_ACTION_COOLDOWN_MS = 35;
+const SOLITAIRE_HISTORY_LIMIT = 200;
+
+/** A frozen copy of a solitaire table: engine mutators never touch it. */
+function snapshotSolitaire(state: SolitaireState): SolitaireState {
+  return {
+    variant: state.variant,
+    draw: state.draw,
+    stock: [...state.stock],
+    waste: [...state.waste],
+    foundations: state.foundations.map((pile) => [...pile]),
+    tableau: state.tableau.map((column) => [...column]),
+    faceDown: [...state.faceDown],
+    freeCells: [...state.freeCells],
+    passes: state.passes
+  };
+}
 
 interface Player {
   id: string;
@@ -126,6 +142,8 @@ interface SolitaireRound {
   state: SolitaireState;
   moves: number;
   stats: Map<string, number>;
+  /** One pre-action snapshot per play, so any seat can give a move back. */
+  history: Array<{ by: string; state: SolitaireState }>;
 }
 
 interface MahjongRound {
@@ -325,7 +343,8 @@ export class Room {
         faceDown: [...state.faceDown],
         freeCells: [...state.freeCells],
         passes: state.passes,
-        moves: this.solitaire.moves
+        moves: this.solitaire.moves,
+        canUndo: this.solitaire.history.length > 0
       };
     }
 
@@ -761,7 +780,8 @@ export class Room {
           this.settings.klondikeDraw
         ),
         moves: 0,
-        stats: new Map([...this.players.keys()].map((id) => [id, 0] as const))
+        stats: new Map([...this.players.keys()].map((id) => [id, 0] as const)),
+        history: []
       };
       this.round = null;
       this.sudoku = null;
@@ -1182,20 +1202,31 @@ export class Room {
     if (now - player.lastActionAt < SUDOKU_ACTION_COOLDOWN_MS) return;
     player.lastActionAt = now;
 
+    if (message.action === 'undo') {
+      const entry = solitaire.history.pop();
+      if (!entry) return;
+      // Snapshot the table as it stands so the broadcast reverses the undone
+      // play card by card, then hand back the restored pre-action state,
+      // exactly as the undone seat left it.
+      const before = snapshotSolitaire(solitaire.state);
+      solitaire.state = entry.state;
+      solitaire.moves = Math.max(0, solitaire.moves - 1);
+      solitaire.stats.set(entry.by, Math.max(0, (solitaire.stats.get(entry.by) ?? 0) - 1));
+      this.touch();
+      this.broadcast({
+        t: 'solitaireMove',
+        moves: diffSolitaire(before, solitaire.state),
+        totalMoves: solitaire.moves,
+        passes: solitaire.state.passes,
+        canUndo: solitaire.history.length > 0
+      });
+      return;
+    }
+
     // Snapshot before mutating so the broadcast can carry only the cards
-    // that changed place, not the whole table.
+    // that changed place, not the whole table — and so any seat can undo.
     const state = solitaire.state;
-    const snapshot: SolitaireState = {
-      variant: state.variant,
-      draw: state.draw,
-      stock: [...state.stock],
-      waste: [...state.waste],
-      foundations: state.foundations.map((pile) => [...pile]),
-      tableau: state.tableau.map((column) => [...column]),
-      faceDown: [...state.faceDown],
-      freeCells: [...state.freeCells],
-      passes: state.passes
-    };
+    const snapshot = snapshotSolitaire(state);
 
     let applied = false;
     switch (message.action) {
@@ -1217,6 +1248,8 @@ export class Room {
         return;
     }
     if (!applied) return;
+    solitaire.history.push({ by: player.id, state: snapshot });
+    if (solitaire.history.length > SOLITAIRE_HISTORY_LIMIT) solitaire.history.shift();
 
     autoPlaySafe(solitaire.state);
     solitaire.moves += 1;
@@ -1231,7 +1264,8 @@ export class Room {
       t: 'solitaireMove',
       moves: diffSolitaire(snapshot, state),
       totalMoves: solitaire.moves,
-      passes: state.passes
+      passes: state.passes,
+      canUndo: solitaire.history.length > 0
     });
   }
 

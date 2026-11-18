@@ -303,3 +303,12 @@ export function IconMoon(props: IconProps) {
     </svg>
   );
 }
+
+export function IconUndo(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 1 1 0 11H11" />
+    </svg>
+  );
+}

@@ -42,7 +42,7 @@ const schema = z.discriminatedUnion('t', [
   }),
   z.object({
     t: z.literal('solitaire'),
-    action: z.enum(['draw', 'recycle', 'move', 'auto']),
+    action: z.enum(['draw', 'recycle', 'move', 'auto', 'undo']),
     card: z.number().int().min(0).max(51).optional(),
     to: slot.optional()
   }),
