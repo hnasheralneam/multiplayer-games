@@ -4,7 +4,6 @@ import { MAHJONG_LAYOUTS, hasFreeMatch, mahjongTilesLeft } from '../../shared/ma
 import { GameHud, HudEndGame, HudMode, HudTimer } from './GameHud';
 import { useNow } from './ui';
 import { GameIcon } from './GameIcon';
-import { PlayerStrip } from './PlayerStrip';
 import { MahjongBoard } from './MahjongBoard';
 
 export interface MahjongGameProps {
@@ -108,8 +107,6 @@ export function MahjongGame({
           </>
         }
       />
-
-      <PlayerStrip players={room.players} you={you} />
 
       <div className="mahjong-layout">
         <div className="mahjong-stage">

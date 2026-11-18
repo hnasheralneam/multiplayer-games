@@ -3,7 +3,6 @@ import { GAME_META, type PublicRoom, type SolitaireSlot, type You } from '../../
 import { GameHud, HudEndGame, HudMode, HudTimer } from './GameHud';
 import { StatusPill, useNow } from './ui';
 import { GameIcon } from './GameIcon';
-import { PlayerStrip } from './PlayerStrip';
 import { useSolitaireSolver } from '../lib/useSolitaireSolver';
 import { SolitaireBoard } from './SolitaireBoard';
 
@@ -100,8 +99,6 @@ export function SolitaireGame({
           </>
         }
       />
-
-      <PlayerStrip players={room.players} you={you} />
 
       <div className="solitaire-layout">
         <div className="solitaire-stage">

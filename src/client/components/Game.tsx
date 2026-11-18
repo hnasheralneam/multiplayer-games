@@ -11,7 +11,6 @@ import { Board } from './Board';
 import { GameHud, HudEndGame, HudTimer } from './GameHud';
 import { Hearts, useNow } from './ui';
 import { IconEye, IconFlag, IconMine } from './icons';
-import { PlayerStrip } from './PlayerStrip';
 
 export interface GameProps {
   room: PublicRoom;
@@ -156,8 +155,6 @@ export function Game({
           </>
         }
       />
-
-      <PlayerStrip players={room.players} you={you} />
 
       <div
         className={`board-stage ${final ? 'board-stage-final' : ''}`}

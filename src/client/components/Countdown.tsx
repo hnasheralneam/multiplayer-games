@@ -51,18 +51,9 @@ export function Countdown({
         : 'Medium';
 
   return (
-    <div className="countdown">
+    <div className="countdown" style={{ '--cols': ghostCols, '--rows': ghostRows } as CSSProperties}>
       <div className="countdown-stage">
-        <div
-          className="ghost-board"
-          style={
-            {
-              '--cols': ghostCols,
-              '--rows': ghostRows
-            } as CSSProperties
-          }
-          aria-hidden="true"
-        >
+        <div className="ghost-board" aria-hidden="true">
           {Array.from(
             { length: ghostCount },
             (_, index) => (

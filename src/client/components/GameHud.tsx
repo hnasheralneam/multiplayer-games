@@ -1,13 +1,19 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { formatClock } from '../lib/format';
-import { IconClock, IconX } from './icons';
+import { IconClock } from './icons';
 
 /**
- * The top bar in RoomChrome owns a slot element; every game renders its HUD
- * through <GameHud>, which lands inside that slot and so becomes one bar.
+ * The top bar in RoomChrome owns a centered slot (game stats) and a right
+ * slot (end game); every game renders its HUD through <GameHud>, which
+ * portals into those slots and so becomes part of the one top bar.
  */
-export const HudSlotContext = createContext<HTMLElement | null>(null);
+export interface HudSlots {
+  center: HTMLElement | null;
+  side: HTMLElement | null;
+}
+
+export const HudSlotContext = createContext<HudSlots>({ center: null, side: null });
 
 export function GameHud({
   left,
@@ -18,15 +24,19 @@ export function GameHud({
   center?: ReactNode;
   right?: ReactNode;
 }) {
-  const slot = useContext(HudSlotContext);
-  if (!slot) return null;
-  return createPortal(
+  const slots = useContext(HudSlotContext);
+  if (!slots.center || !slots.side) return null;
+  return (
     <>
-      <div className="hud-side">{left}</div>
-      <div className="hud-center">{center}</div>
-      <div className="hud-side hud-right">{right}</div>
-    </>,
-    slot
+      {createPortal(
+        <>
+          <div className="hud-side">{left}</div>
+          <div className="hud-center">{center}</div>
+        </>,
+        slots.center
+      )}
+      {createPortal(<div className="hud-side hud-right">{right}</div>, slots.side)}
+    </>
   );
 }
 
@@ -56,7 +66,7 @@ export function HudEndGame({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label="End this game for everyone"
     >
-      <IconX size={13} /> End game
+      End game
     </button>
   );
 }

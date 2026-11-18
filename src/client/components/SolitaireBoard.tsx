@@ -671,8 +671,6 @@ export function SolitaireBoard({
           )}
         </div>
 
-        <div className="solitaire-spacer" />
-
         <div className="solitaire-foundations" aria-label="Foundations">
           {solitaire.foundations.map((pile, index) => {
             const top = pile.length > 0 ? pile[pile.length - 1] : null;

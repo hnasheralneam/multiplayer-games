@@ -7,7 +7,6 @@ import {
 import { GameHud, HudEndGame, HudMode, HudTimer } from './GameHud';
 import { useNow } from './ui';
 import { IconSudoku } from './icons';
-import { PlayerStrip } from './PlayerStrip';
 import { SudokuBoard, type SudokuEntryView } from './SudokuBoard';
 
 export interface SudokuGameProps {
@@ -200,8 +199,6 @@ export function SudokuGame({
           </>
         }
       />
-
-      <PlayerStrip players={room.players} you={you} />
 
       <div className="sudoku-layout">
         <div className="sudoku-stage" onKeyDown={onKeyDown}>

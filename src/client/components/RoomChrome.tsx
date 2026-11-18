@@ -1,5 +1,5 @@
-import type { RoomStatus } from '../../shared/types';
-import { Logo, ThemeToggle } from './ui';
+import type { PublicPlayer, RoomStatus } from '../../shared/types';
+import { Avatar, Logo, ThemeToggle } from './ui';
 import { IconCopy, IconGear, IconUsers, IconX } from './icons';
 
 export function RoomChrome({
@@ -17,7 +17,9 @@ export function RoomChrome({
   onCloseRoom,
   onReturnLobby,
   solo,
-  hudSlotRef
+  players,
+  centerSlotRef,
+  sideSlotRef
 }: {
   code: string;
   status: RoomStatus;
@@ -33,7 +35,9 @@ export function RoomChrome({
   onCloseRoom: () => void;
   onReturnLobby: () => void;
   solo?: boolean;
-  hudSlotRef?: (el: HTMLDivElement | null) => void;
+  players?: PublicPlayer[];
+  centerSlotRef?: (el: HTMLDivElement | null) => void;
+  sideSlotRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
     <header className="room-bar">
@@ -45,8 +49,27 @@ export function RoomChrome({
         <IconCopy size={14} />
       </button>
 
+      {players && players.length > 0 && (
+        <div className="room-bar-players" aria-label="Players in this room">
+          {players.map((player) => (
+            <span
+              className={`room-bar-player ${player.connected ? '' : 'room-bar-player-offline'}`}
+              key={player.id}
+              data-tip={player.isHost ? `${player.name} · host` : player.name}
+              aria-label={player.isHost ? `${player.name}, host` : player.name}
+            >
+              <Avatar avatar={player.avatar} color={player.color} size={28} />
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="room-bar-middle">
-        <div className="room-bar-hud" ref={hudSlotRef} />
+        <div className="room-bar-hud" ref={centerSlotRef} />
+      </div>
+
+      <div className="room-bar-info">
+        <div className="room-bar-side" ref={sideSlotRef} />
         {!solo && (
           <span className="room-player-count">
             <IconUsers size={14} /> {count}/{max}

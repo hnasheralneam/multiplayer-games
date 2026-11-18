@@ -174,7 +174,8 @@ export function RoomPage({ code }: { code: string }) {
   const [endOpen, setEndOpen] = useState(false);
   const [localToast, setLocalToast] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
-  const [hudSlot, setHudSlot] = useState<HTMLDivElement | null>(null);
+  const [hudCenterSlot, setHudCenterSlot] = useState<HTMLDivElement | null>(null);
+  const [hudSideSlot, setHudSideSlot] = useState<HTMLDivElement | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const autoJoined = useRef(false);
@@ -518,7 +519,9 @@ export function RoomPage({ code }: { code: string }) {
             send({ t: 'lobby' });
           }}
           solo={Boolean(solo)}
-          hudSlotRef={setHudSlot}
+          players={room.players}
+          centerSlotRef={setHudCenterSlot}
+          sideSlotRef={setHudSideSlot}
         />
 
         {!online && !solo && (
@@ -550,8 +553,18 @@ export function RoomPage({ code }: { code: string }) {
           </div>
         )}
 
-        <main className={`room-main ${wideBoard ? 'room-main-wide' : ''}`}>
-          <HudSlotContext.Provider value={hudSlot}>{content}</HudSlotContext.Provider>
+        <main
+          className={`room-main ${wideBoard ? 'room-main-wide' : ''} ${
+            (room.status === 'results' && showResults) || room.status === 'countdown'
+              ? 'room-main-center'
+              : ''
+          }`}
+        >
+          <HudSlotContext.Provider
+            value={{ center: hudCenterSlot, side: hudSideSlot }}
+          >
+            {content}
+          </HudSlotContext.Provider>
         </main>
 
         <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite players" wide>
