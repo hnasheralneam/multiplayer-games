@@ -22,6 +22,12 @@ interface Props {
   solitaire: PublicSolitaire;
   selected: number | null;
   disabled?: boolean;
+  /**
+   * Column height on offer below the top row, in card widths. A column that
+   * runs deeper than it holds at the natural 0.5-card fan compresses instead
+   * of pushing the cards smaller. Null until the stage has been measured.
+   */
+  fanRoom?: number | null;
   onSelect: (card: number | null) => void;
   onMove: (card: number, to: SolitaireSlot) => void;
   onDraw: () => void;
@@ -261,6 +267,7 @@ export function SolitaireBoard({
   solitaire,
   selected,
   disabled = false,
+  fanRoom = null,
   onSelect,
   onMove,
   onDraw,
@@ -718,6 +725,10 @@ export function SolitaireBoard({
       <div className={`solitaire-tableau solitaire-tableau-${solitaire.variant}`}>
         {solitaire.tableau.map((column, index) => {
           const faceDown = solitaire.faceDown[index] ?? 0;
+          const fan =
+            fanRoom !== null && column.length > 1
+              ? Math.max(0.12, Math.min(0.5, fanRoom / (column.length - 1)))
+              : 0.5;
           return (
             <div
               className={classNames(
@@ -726,6 +737,7 @@ export function SolitaireBoard({
               )}
               key={index}
               data-drop={`tableau:${index}`}
+              style={{ '--fan': fan } as CSSProperties}
             >
               {column.length === 0 ? (
                 <button

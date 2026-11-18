@@ -3034,15 +3034,16 @@ body.modal-open {
  * table always fills the stage (and nothing is stretched or letterboxed):
  *   klondike: 7 columns + 6 gaps of 0.12w = 7.72w
  *   freecell: 8 columns + 7 gaps of 0.12w = 8.84w
- * --card-cap narrows that fit when the stage sits on a short screen: the
- * cap is the largest card width whose full board height (3.04w for the top
- * rows, plus 0.5w per tableau card beyond the first) still ends above the
- * fold. The vw-based declaration is a fallback for browsers without
- * container units.
+ * SolitaireGame sets --card-size once per round: the size at which the dealt
+ * table (tallest column 7 cards, fanned at 0.5w — a 6.04w tall board) fits
+ * the visible screen, and sticks with it while cards move. Columns that run
+ * deeper compress their own fan (--fan, see .solitaire-card-wrap) instead of
+ * pushing the whole table smaller. The vw and cqw declarations here are the
+ * fallback for the first frame and for browsers without container units.
  */
 .solitaire-board {
   --card-w: clamp(38px, 6.5vw, 100px);
-  --card-w: max(38px, min(calc(100cqw / 7.72), var(--card-cap, 10000px)));
+  --card-w: var(--card-size, max(38px, calc(100cqw / 7.72)));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -3058,7 +3059,7 @@ body.modal-open {
 
 .solitaire-board-freecell {
   --card-w: clamp(34px, 5.8vw, 84px);
-  --card-w: max(32px, min(calc(100cqw / 8.84), var(--card-cap, 10000px)));
+  --card-w: var(--card-size, max(32px, calc(100cqw / 8.84)));
   min-width: calc(var(--card-w) * 8.84);
   max-width: calc(var(--card-w) * 8.84);
 }
@@ -3194,7 +3195,7 @@ body.modal-open {
 
 .solitaire-card-wrap {
   position: relative;
-  margin-top: calc(var(--card-w) * -0.9);
+  margin-top: calc((var(--fan, 0.5) - 1.4) * var(--card-w));
   z-index: 1;
 }
 

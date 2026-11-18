@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { GAME_META, type PublicRoom, type SolitaireSlot, type You } from '../../shared/types';
 import { GameHud, HudEndGame, HudMode, HudTimer } from './GameHud';
 import { StatusPill, useNow } from './ui';
@@ -43,7 +43,7 @@ export function SolitaireGame({
   const serverNow = now + serverOffset;
   const [selected, setSelected] = useState<number | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const [cardCap, setCardCap] = useState<number | null>(null);
+  const [fit, setFit] = useState<{ card: number; fanRoom: number } | null>(null);
 
   useEffect(() => {
     setSelected(null);
@@ -59,16 +59,12 @@ export function SolitaireGame({
     if (!present) setSelected(null);
   }, [solitaire, selected]);
 
-  const deepest = useMemo(
-    () => (solitaire ? Math.max(0, ...solitaire.tableau.map((column) => column.length - 1)) : 0),
-    [solitaire]
-  );
-
-  // The board is a fixed-ratio design measured in card widths (see the
-  // .solitaire-board comment), so the ratio is exact at any size. The width
-  // fit alone can still make a deep tableau run past the viewport, so the
-  // stage's real space below the room bar also caps the card width here —
-  // the whole table then always fits the visible screen, sans scroll.
+  // One size per round: the table is dealt with a 7-card run on its tallest
+  // column (Klondike and FreeCell alike), so its fixed-ratio board spans
+  // 1.64 card widths above the columns and 4.4 inside them — 6.04 total (see
+  // .solitaire-board).Cards stay at the size that fit the deal for the whole
+  // round; a column that grows deeper compresses its own fan instead of
+  // pushing cards smaller (the classic solitaire squeeze).
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -78,10 +74,13 @@ export function SolitaireGame({
       // Space left of the stage's own chrome: its padding and border sit
       // between the board and the stage box, and the page keeps 48px further
       // down under the table.
-      const available = Math.max(240, viewportH - stageTop - 83);
-      const units = 3.04 + 0.5 * deepest;
-      const cap = Math.floor(available / units);
-      setCardCap((prev) => (prev === cap ? prev : cap));
+      const available = Math.max(260, viewportH - stageTop - 83);
+      const card = Math.max(30, Math.floor(available / 6.04));
+      setFit((prev) => {
+        const fanRoom = available / card - 3.04;
+        if (prev && prev.card === card && Math.abs(prev.fanRoom - fanRoom) < 0.005) return prev;
+        return { card, fanRoom };
+      });
     };
     update();
     const observer = new ResizeObserver(update);
@@ -93,7 +92,7 @@ export function SolitaireGame({
       window.removeEventListener('resize', update);
       window.visualViewport?.removeEventListener('resize', update);
     };
-  }, [deepest]);
+  }, []);
 
   const solverStatus = useSolitaireSolver(solitaire, room.status === 'playing');
 
@@ -153,14 +152,15 @@ export function SolitaireGame({
 
       <div className="solitaire-layout">
         <div
-        className="solitaire-stage"
-        ref={stageRef}
-        style={{ '--card-cap': cardCap ? `${cardCap}px` : undefined } as CSSProperties}
-      >
+          className="solitaire-stage"
+          ref={stageRef}
+          style={fit ? ({ '--card-size': `${fit.card}px` } as CSSProperties) : undefined}
+        >
           <SolitaireBoard
             solitaire={solitaire}
             selected={selected}
             disabled={!canPlay}
+            fanRoom={fit ? fit.fanRoom : null}
             onSelect={setSelected}
             onMove={onMove}
             onDraw={onDraw}
